@@ -29,7 +29,7 @@ use crate::{LateContext, fluent_generated as fluent};
 #[diag(lint_shadowed_into_iter)]
 pub(crate) struct ShadowedIntoIterDiag {
     pub target: &'static str,
-    pub edition: &'static str,
+    pub edition: Edition,
     #[suggestion(lint_use_iter_suggestion, code = "iter", applicability = "machine-applicable")]
     pub suggestion: Span,
     #[subdiagnostic]

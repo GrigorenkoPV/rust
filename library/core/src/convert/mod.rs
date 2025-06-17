@@ -217,6 +217,7 @@ pub const fn identity<T>(x: T) -> T {
 #[rustc_diagnostic_item = "AsRef"]
 pub trait AsRef<T: ?Sized> {
     /// Converts this type into a shared reference of the (usually inferred) input type.
+    #[lang = "as_ref"]
     #[stable(feature = "rust1", since = "1.0.0")]
     fn as_ref(&self) -> &T;
 }
@@ -368,6 +369,7 @@ pub trait AsRef<T: ?Sized> {
 #[rustc_diagnostic_item = "AsMut"]
 pub trait AsMut<T: ?Sized> {
     /// Converts this type into a mutable reference of the (usually inferred) input type.
+    #[lang = "as_mut"]
     #[stable(feature = "rust1", since = "1.0.0")]
     fn as_mut(&mut self) -> &mut T;
 }

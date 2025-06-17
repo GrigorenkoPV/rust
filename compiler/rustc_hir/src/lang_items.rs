@@ -402,7 +402,10 @@ language_item_table! {
 
     IntoFutureIntoFuture,    sym::into_future,         into_future_fn,             Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
     IntoIterIntoIter,        sym::into_iter,           into_iter_fn,               Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
-    IteratorNext,            sym::next,                next_fn,                    Target::Method(MethodKind::Trait { body: false}), GenericRequirement::None;
+    IteratorNext,            sym::next,                next_fn,                    Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+
+    AsRefAsRef,              sym::as_ref,              as_ref_fn,                  Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
+    AsMutAsMut,              sym::as_mut,              as_mut_fn,                  Target::Method(MethodKind::Trait { body: false }), GenericRequirement::None;
 
     PinNewUnchecked,         sym::new_unchecked,       new_unchecked_fn,           Target::Method(MethodKind::Inherent), GenericRequirement::None;
 

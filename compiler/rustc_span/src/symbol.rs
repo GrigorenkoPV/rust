@@ -466,6 +466,7 @@ symbols! {
         arm,
         arm_target_feature,
         array,
+        as_mut,
         as_ptr,
         as_ref,
         as_str,

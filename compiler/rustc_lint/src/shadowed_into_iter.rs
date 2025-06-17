@@ -1,6 +1,6 @@
-use rustc_hir::{self as hir, LangItem};
+use rustc_hir::{self as hir, HirId, LangItem};
 use rustc_middle::ty::{self, Ty};
-use rustc_session::lint::FutureIncompatibilityReason;
+use rustc_session::lint::{FutureIncompatibilityReason, Lint};
 use rustc_session::{declare_lint, impl_lint_pass};
 use rustc_span::edition::Edition;
 
@@ -65,92 +65,210 @@ declare_lint! {
     };
 }
 
+declare_lint! {
+    /// TODO
+    pub ARRAY_AS_REF,
+    Warn,
+    "TODO"
+}
+
 #[derive(Copy, Clone)]
 pub(crate) struct ShadowedIntoIter;
 
-impl_lint_pass!(ShadowedIntoIter => [ARRAY_INTO_ITER, BOXED_SLICE_INTO_ITER]);
+impl_lint_pass!(ShadowedIntoIter => [ARRAY_INTO_ITER, BOXED_SLICE_INTO_ITER, ARRAY_AS_REF]);
+
+fn is_ref_to_array(ty: Ty<'_>) -> bool {
+    if let ty::Ref(_, pointee_ty, _) = *ty.kind() { pointee_ty.is_array() } else { false }
+}
+
+fn find_array_index(adjusted_receiver_tys: &[Ty<'_>]) -> Option<usize> {
+    if is_ref_to_array(*adjusted_receiver_tys.last().unwrap()) {
+        adjusted_receiver_tys
+            .iter()
+            .copied()
+            .take_while(|ty| !is_ref_to_array(*ty))
+            .position(|ty| ty.is_array())
+    } else {
+        None
+    }
+}
+
+fn is_ref_to_boxed_slice(ty: Ty<'_>) -> bool {
+    if let ty::Ref(_, pointee_ty, _) = *ty.kind() {
+        pointee_ty.boxed_ty().is_some_and(Ty::is_slice)
+    } else {
+        false
+    }
+}
+
+fn find_boxed_slice_index(adjusted_receiver_tys: &[Ty<'_>]) -> Option<usize> {
+    if is_ref_to_boxed_slice(*adjusted_receiver_tys.last().unwrap()) {
+        adjusted_receiver_tys
+            .iter()
+            .copied()
+            .take_while(|ty| !is_ref_to_boxed_slice(*ty))
+            .position(|ty| ty.boxed_ty().is_some_and(Ty::is_slice))
+    } else {
+        None
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Method {
+    IntoIter,
+    AsRef { mutable: bool },
+}
+
+impl Method {
+    fn find_possibly_shadowed(cx: &LateContext<'_>, method: HirId) -> Option<Self> {
+        match cx.tcx.as_lang_item(cx.typeck_results().type_dependent_def_id(method)?)? {
+            LangItem::IntoIterIntoIter => Some(Self::IntoIter),
+            LangItem::AsRefAsRef => Some(Self::AsRef { mutable: false }),
+            LangItem::AsMutAsMut => Some(Self::AsRef { mutable: true }),
+            _ => None,
+        }
+    }
+
+    fn check_receiver(self, adjusted_receiver_tys: &[Ty<'_>]) -> Option<(Shadowed, bool)> {
+        match self {
+            Self::IntoIter => find_array_index(adjusted_receiver_tys)
+                .map(|i| (i, IntoIterReceiver::Array))
+                .or_else(|| {
+                    find_boxed_slice_index(adjusted_receiver_tys)
+                        .map(|i| (i, IntoIterReceiver::BoxedSlice))
+                })
+                .map(|(i, receiver)| (Shadowed::IntoIter { receiver }, i == 0)),
+            Self::AsRef { mutable } => find_array_index(adjusted_receiver_tys)
+                .map(|i| (Shadowed::ArrayAsRef { mutable }, i == 0)),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum IntoIterReceiver {
+    Array,
+    BoxedSlice,
+}
+
+#[derive(Clone, Copy)]
+enum Shadowed {
+    IntoIter { receiver: IntoIterReceiver },
+    ArrayAsRef { mutable: bool },
+}
+
+impl Shadowed {
+    fn receiver(self) -> Receiver {
+        match self {
+            Self::IntoIter { receiver } => receiver.into(),
+            Self::ArrayAsRef { .. } => Receiver::Array,
+        }
+    }
+    fn edition(self) -> Edition {
+        match self {
+            Self::IntoIter { receiver: IntoIterReceiver::Array } => Edition::Edition2021,
+            Self::IntoIter { receiver: IntoIterReceiver::BoxedSlice } => Edition::Edition2024,
+            Self::ArrayAsRef { .. } => Edition::EditionFuture,
+        }
+    }
+    fn lint(self) -> &'static Lint {
+        match self {
+            Self::IntoIter { receiver: IntoIterReceiver::Array } => ARRAY_INTO_ITER,
+            Self::IntoIter { receiver: IntoIterReceiver::BoxedSlice } => BOXED_SLICE_INTO_ITER,
+            Self::ArrayAsRef { .. } => ARRAY_AS_REF,
+        }
+    }
+}
+
+impl From<IntoIterReceiver> for Receiver {
+    fn from(value: IntoIterReceiver) -> Self {
+        match value {
+            IntoIterReceiver::Array => Self::Array,
+            IntoIterReceiver::BoxedSlice => Self::BoxedSlice,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+enum Receiver {
+    Array,
+    BoxedSlice,
+}
+
+impl Receiver {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Array => "[T; N]",
+            Self::BoxedSlice => "Box<[T]>",
+        }
+    }
+}
 
 impl<'tcx> LateLintPass<'tcx> for ShadowedIntoIter {
     fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
         let hir::ExprKind::MethodCall(call, receiver_arg, ..) = &expr.kind else {
             return;
         };
-
-        // Check if the method call actually calls the libcore
-        // `IntoIterator::into_iter`.
-        let Some(method_def_id) = cx.typeck_results().type_dependent_def_id(expr.hir_id) else {
+        let Some(possibly_shadowed) = Method::find_possibly_shadowed(cx, expr.hir_id) else {
             return;
         };
-        if !cx.tcx.is_lang_item(method_def_id, LangItem::IntoIterIntoIter) {
-            return;
-        }
-
-        // As this is a method call expression, we have at least one argument.
         let receiver_ty = cx.typeck_results().expr_ty(receiver_arg);
         let adjustments = cx.typeck_results().expr_adjustments(receiver_arg);
-
         let adjusted_receiver_tys: Vec<_> =
             [receiver_ty].into_iter().chain(adjustments.iter().map(|adj| adj.target)).collect();
-
-        fn is_ref_to_array(ty: Ty<'_>) -> bool {
-            if let ty::Ref(_, pointee_ty, _) = *ty.kind() { pointee_ty.is_array() } else { false }
-        }
-        fn is_ref_to_boxed_slice(ty: Ty<'_>) -> bool {
-            if let ty::Ref(_, pointee_ty, _) = *ty.kind() {
-                pointee_ty.boxed_ty().is_some_and(Ty::is_slice)
-            } else {
-                false
-            }
-        }
-
-        let (lint, target, edition, can_suggest_ufcs) =
-            if is_ref_to_array(*adjusted_receiver_tys.last().unwrap())
-                && let Some(idx) = adjusted_receiver_tys
-                    .iter()
-                    .copied()
-                    .take_while(|ty| !is_ref_to_array(*ty))
-                    .position(|ty| ty.is_array())
-            {
-                (ARRAY_INTO_ITER, "[T; N]", "2021", idx == 0)
-            } else if is_ref_to_boxed_slice(*adjusted_receiver_tys.last().unwrap())
-                && let Some(idx) = adjusted_receiver_tys
-                    .iter()
-                    .copied()
-                    .take_while(|ty| !is_ref_to_boxed_slice(*ty))
-                    .position(|ty| ty.boxed_ty().is_some_and(Ty::is_slice))
-            {
-                (BOXED_SLICE_INTO_ITER, "Box<[T]>", "2024", idx == 0)
-            } else {
-                return;
-            };
-
-        // If this expression comes from the `IntoIter::into_iter` inside of a for loop,
-        // we should just suggest removing the `.into_iter()` or changing it to `.iter()`
-        // to disambiguate if we want to iterate by-value or by-ref.
-        let sub = if let Some((_, hir::Node::Expr(parent_expr))) =
-            cx.tcx.hir_parent_iter(expr.hir_id).nth(1)
-            && let hir::ExprKind::Match(arg, [_], hir::MatchSource::ForLoopDesugar) =
-                &parent_expr.kind
-            && let hir::ExprKind::Call(path, [_]) = &arg.kind
-            && let hir::ExprKind::Path(hir::QPath::LangItem(hir::LangItem::IntoIterIntoIter, ..)) =
-                &path.kind
-        {
-            Some(ShadowedIntoIterDiagSub::RemoveIntoIter {
-                span: receiver_arg.span.shrink_to_hi().to(expr.span.shrink_to_hi()),
-            })
-        } else if can_suggest_ufcs {
-            Some(ShadowedIntoIterDiagSub::UseExplicitIntoIter {
-                start_span: expr.span.shrink_to_lo(),
-                end_span: receiver_arg.span.shrink_to_hi().to(expr.span.shrink_to_hi()),
-            })
-        } else {
-            None
+        let Some((shadowed, can_suggest_ufcs)) =
+            possibly_shadowed.check_receiver(&adjusted_receiver_tys)
+        else {
+            return;
         };
 
-        cx.emit_span_lint(
-            lint,
-            call.ident.span,
-            ShadowedIntoIterDiag { target, edition, suggestion: call.ident.span, sub },
-        );
+        match shadowed {
+            Shadowed::IntoIter { .. } => {
+                // If this expression comes from the `IntoIter::into_iter` inside of a for loop,
+                // we should just suggest removing the `.into_iter()` or changing it to `.iter()`
+                // to disambiguate if we want to iterate by-value or by-ref.
+                let sub = if let Some((_, hir::Node::Expr(parent_expr))) =
+                    cx.tcx.hir_parent_iter(expr.hir_id).nth(1)
+                    && let hir::ExprKind::Match(arg, [_], hir::MatchSource::ForLoopDesugar) =
+                        &parent_expr.kind
+                    && let hir::ExprKind::Call(path, [_]) = &arg.kind
+                    && let hir::ExprKind::Path(hir::QPath::LangItem(
+                        hir::LangItem::IntoIterIntoIter,
+                        ..,
+                    )) = &path.kind
+                {
+                    Some(ShadowedIntoIterDiagSub::RemoveIntoIter {
+                        span: receiver_arg.span.shrink_to_hi().to(expr.span.shrink_to_hi()),
+                    })
+                } else if can_suggest_ufcs {
+                    Some(ShadowedIntoIterDiagSub::UseExplicitIntoIter {
+                        start_span: expr.span.shrink_to_lo(),
+                        end_span: receiver_arg.span.shrink_to_hi().to(expr.span.shrink_to_hi()),
+                    })
+                } else {
+                    None
+                };
+
+                cx.emit_span_lint(
+                    shadowed.lint(),
+                    call.ident.span,
+                    ShadowedIntoIterDiag {
+                        target: shadowed.receiver().as_str(),
+                        edition: shadowed.edition(),
+                        suggestion: call.ident.span,
+                        sub,
+                    },
+                )
+            }
+            Shadowed::ArrayAsRef { .. } => cx.emit_span_lint(
+                shadowed.lint(),
+                call.ident.span,
+                ShadowedIntoIterDiag {
+                    target: shadowed.receiver().as_str(),
+                    edition: shadowed.edition(),
+                    suggestion: call.ident.span,
+                    sub: None,
+                },
+            ),
+        }
     }
 }
