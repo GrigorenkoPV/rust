@@ -55,6 +55,14 @@ pub(crate) enum ShadowedIntoIterDiagSub {
     },
 }
 
+#[derive(LintDiagnostic)]
+#[diag(lint_array_as_ref)]
+pub(crate) struct ArrayAsRefDiag {
+    #[suggestion(code = "{replacement}", applicability = "machine-applicable", style = "short")]
+    pub suggestion: Span,
+    pub replacement: &'static str,
+}
+
 // autorefs.rs
 #[derive(LintDiagnostic)]
 #[diag(lint_implicit_unsafe_autorefs)]

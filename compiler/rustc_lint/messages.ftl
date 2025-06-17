@@ -16,6 +16,9 @@ lint_ambiguous_wide_pointer_comparisons = ambiguous wide pointer comparison, the
     .cast_suggestion = use untyped pointers to only compare their addresses
     .expect_suggestion = or expect the lint to compare the pointers metadata and addresses
 
+lint_array_as_ref = TODO
+    .suggestion = use `.{$replacement}()` instead
+
 lint_associated_const_elided_lifetime = {$elided ->
         [true] `&` without an explicit lifetime name cannot be used here
         *[false] `'_` cannot be used here

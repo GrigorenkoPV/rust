@@ -1,10 +1,10 @@
 use rustc_hir::{self as hir, HirId, LangItem};
 use rustc_middle::ty::{self, Ty};
-use rustc_session::lint::{FutureIncompatibilityReason, Lint};
+use rustc_session::lint::FutureIncompatibilityReason;
 use rustc_session::{declare_lint, impl_lint_pass};
 use rustc_span::edition::Edition;
 
-use crate::lints::{ShadowedIntoIterDiag, ShadowedIntoIterDiagSub};
+use crate::lints::{ArrayAsRefDiag, ShadowedIntoIterDiag, ShadowedIntoIterDiagSub};
 use crate::{LateContext, LateLintPass, LintContext};
 
 declare_lint! {
@@ -150,6 +150,15 @@ enum IntoIterReceiver {
     BoxedSlice,
 }
 
+impl IntoIterReceiver {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Array => "[T; N]",
+            Self::BoxedSlice => "Box<[T]>",
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum Shadowed {
     IntoIter { receiver: IntoIterReceiver },
@@ -157,48 +166,11 @@ enum Shadowed {
 }
 
 impl Shadowed {
-    fn receiver(self) -> Receiver {
-        match self {
-            Self::IntoIter { receiver } => receiver.into(),
-            Self::ArrayAsRef { .. } => Receiver::Array,
-        }
-    }
     fn edition(self) -> Edition {
         match self {
             Self::IntoIter { receiver: IntoIterReceiver::Array } => Edition::Edition2021,
             Self::IntoIter { receiver: IntoIterReceiver::BoxedSlice } => Edition::Edition2024,
             Self::ArrayAsRef { .. } => Edition::EditionFuture,
-        }
-    }
-    fn lint(self) -> &'static Lint {
-        match self {
-            Self::IntoIter { receiver: IntoIterReceiver::Array } => ARRAY_INTO_ITER,
-            Self::IntoIter { receiver: IntoIterReceiver::BoxedSlice } => BOXED_SLICE_INTO_ITER,
-            Self::ArrayAsRef { .. } => ARRAY_AS_REF,
-        }
-    }
-}
-
-impl From<IntoIterReceiver> for Receiver {
-    fn from(value: IntoIterReceiver) -> Self {
-        match value {
-            IntoIterReceiver::Array => Self::Array,
-            IntoIterReceiver::BoxedSlice => Self::BoxedSlice,
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Receiver {
-    Array,
-    BoxedSlice,
-}
-
-impl Receiver {
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Array => "[T; N]",
-            Self::BoxedSlice => "Box<[T]>",
         }
     }
 }
@@ -222,7 +194,7 @@ impl<'tcx> LateLintPass<'tcx> for ShadowedIntoIter {
         };
 
         match shadowed {
-            Shadowed::IntoIter { .. } => {
+            Shadowed::IntoIter { receiver } => {
                 // If this expression comes from the `IntoIter::into_iter` inside of a for loop,
                 // we should just suggest removing the `.into_iter()` or changing it to `.iter()`
                 // to disambiguate if we want to iterate by-value or by-ref.
@@ -249,24 +221,25 @@ impl<'tcx> LateLintPass<'tcx> for ShadowedIntoIter {
                 };
 
                 cx.emit_span_lint(
-                    shadowed.lint(),
+                    match receiver {
+                        IntoIterReceiver::Array => ARRAY_INTO_ITER,
+                        IntoIterReceiver::BoxedSlice => BOXED_SLICE_INTO_ITER,
+                    },
                     call.ident.span,
                     ShadowedIntoIterDiag {
-                        target: shadowed.receiver().as_str(),
+                        target: receiver.as_str(),
                         edition: shadowed.edition(),
                         suggestion: call.ident.span,
                         sub,
                     },
                 )
             }
-            Shadowed::ArrayAsRef { .. } => cx.emit_span_lint(
-                shadowed.lint(),
+            Shadowed::ArrayAsRef { mutable } => cx.emit_span_lint(
+                ARRAY_AS_REF,
                 call.ident.span,
-                ShadowedIntoIterDiag {
-                    target: shadowed.receiver().as_str(),
-                    edition: shadowed.edition(),
+                ArrayAsRefDiag {
                     suggestion: call.ident.span,
-                    sub: None,
+                    replacement: if mutable { "as_mut_slice" } else { "as_slice" },
                 },
             ),
         }
