@@ -28,28 +28,28 @@ LL | #[rustc_skip_during_method_dispatch()]
 error[E0538]: malformed `rustc_skip_during_method_dispatch` attribute input
   --> $DIR/rustc_skip_during_method_dispatch.rs:15:1
    |
-LL | #[rustc_skip_during_method_dispatch(array, boxed_slice, array)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-----^^
-   | |                                                       |
-   | |                                                       found `array` used as a key more than once
+LL | #[rustc_skip_during_method_dispatch(array = "2021", boxed_slice = "2024", array = "2018")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^--------------^^
+   | |                                                                         |
+   | |                                                                         found `array` used as a key more than once
    | help: must be of the form: `#[rustc_skip_during_method_dispatch(array, boxed_slice)]`
 
 error[E0539]: malformed `rustc_skip_during_method_dispatch` attribute input
   --> $DIR/rustc_skip_during_method_dispatch.rs:19:1
    |
-LL | #[rustc_skip_during_method_dispatch(slice)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-----^^
+LL | #[rustc_skip_during_method_dispatch(slice = "2024")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^-----^^^^^^^^^^^
    | |                                   |
    | |                                   valid arguments are `array` or `boxed_slice`
    | help: must be of the form: `#[rustc_skip_during_method_dispatch(array, boxed_slice)]`
 
-error[E0565]: malformed `rustc_skip_during_method_dispatch` attribute input
+error[E0539]: malformed `rustc_skip_during_method_dispatch` attribute input
   --> $DIR/rustc_skip_during_method_dispatch.rs:23:1
    |
 LL | #[rustc_skip_during_method_dispatch(array = true)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^------^^
-   | |                                         |
-   | |                                         didn't expect any arguments here
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^----^^
+   | |                                           |
+   | |                                           expected a string literal here
    | help: must be of the form: `#[rustc_skip_during_method_dispatch(array, boxed_slice)]`
 
 error[E0565]: malformed `rustc_skip_during_method_dispatch` attribute input
@@ -61,16 +61,34 @@ LL | #[rustc_skip_during_method_dispatch("array")]
    | |                                   didn't expect a literal here
    | help: must be of the form: `#[rustc_skip_during_method_dispatch(array, boxed_slice)]`
 
-error: attribute should be applied to a trait
-  --> $DIR/rustc_skip_during_method_dispatch.rs:34:1
+error[E0539]: malformed `rustc_skip_during_method_dispatch` attribute input
+  --> $DIR/rustc_skip_during_method_dispatch.rs:31:1
    |
-LL | #[rustc_skip_during_method_dispatch(array)]
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | #[rustc_skip_during_method_dispatch(array = 2021, boxed_slice = "2007")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^----^^^^^^^^^^^^^^^^^^^^^^^^
+   | |                                           |
+   | |                                           expected a string literal here
+   | help: must be of the form: `#[rustc_skip_during_method_dispatch(array, boxed_slice)]`
+
+error[E0539]: malformed `rustc_skip_during_method_dispatch` attribute input
+  --> $DIR/rustc_skip_during_method_dispatch.rs:31:1
+   |
+LL | #[rustc_skip_during_method_dispatch(array = 2021, boxed_slice = "2007")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^------^^
+   | |                                                               |
+   | |                                                               valid arguments are `2015`, `2018`, `2021`, `2024` or `future`
+   | help: must be of the form: `#[rustc_skip_during_method_dispatch(array, boxed_slice)]`
+
+error: attribute should be applied to a trait
+  --> $DIR/rustc_skip_during_method_dispatch.rs:42:1
+   |
+LL | #[rustc_skip_during_method_dispatch(array = "2021")]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 LL |
 LL | impl OK for () {}
    | ----------------- not a trait
 
-error: aborting due to 8 previous errors
+error: aborting due to 10 previous errors
 
 Some errors have detailed explanations: E0538, E0539, E0565.
 For more information about an error, try `rustc --explain E0538`.

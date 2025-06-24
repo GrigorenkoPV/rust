@@ -2,6 +2,7 @@
 
 use rustc_middle::ty::Ty;
 use rustc_middle::{mir, ty};
+use rustc_span::edition::Edition;
 use stable_mir::ty::{
     AdtKind, FloatTy, GenericArgs, GenericParamDef, IntTy, Region, RigidTy, TyKind, UintTy,
 };
@@ -502,8 +503,12 @@ impl<'tcx> Stable<'tcx> for ty::TraitDef {
             has_auto_impl: self.has_auto_impl,
             is_marker: self.is_marker,
             is_coinductive: self.is_coinductive,
-            skip_array_during_method_dispatch: self.skip_array_during_method_dispatch,
-            skip_boxed_slice_during_method_dispatch: self.skip_boxed_slice_during_method_dispatch,
+            skip_array_during_method_dispatch: self
+                .skip_array_during_method_dispatch
+                .stable(tables),
+            skip_boxed_slice_during_method_dispatch: self
+                .skip_boxed_slice_during_method_dispatch
+                .stable(tables),
             specialization_kind: self.specialization_kind.stable(tables),
             must_implement_one_of: self
                 .must_implement_one_of
@@ -966,5 +971,19 @@ impl<'tcx> Stable<'tcx> for rustc_middle::ty::util::Discr<'tcx> {
 
     fn stable(&self, tables: &mut Tables<'_>) -> Self::T {
         stable_mir::ty::Discr { val: self.val, ty: self.ty.stable(tables) }
+    }
+}
+
+impl Stable<'_> for Edition {
+    type T = stable_mir::edition::Edition;
+
+    fn stable(&self, _: &mut Tables<'_>) -> Self::T {
+        match self {
+            Self::Edition2015 => Self::T::Edition2015,
+            Self::Edition2018 => Self::T::Edition2018,
+            Self::Edition2021 => Self::T::Edition2021,
+            Self::Edition2024 => Self::T::Edition2024,
+            Self::EditionFuture => Self::T::EditionFuture,
+        }
     }
 }

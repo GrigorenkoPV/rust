@@ -4,6 +4,7 @@ use std::ops::Range;
 use serde::Serialize;
 use stable_mir::abi::{FnAbi, Layout};
 use stable_mir::crate_def::{CrateDef, CrateDefItems, CrateDefType};
+use stable_mir::edition::Edition;
 use stable_mir::mir::alloc::{AllocId, read_target_int, read_target_uint};
 use stable_mir::mir::mono::StaticDef;
 use stable_mir::target::MachineInfo;
@@ -1383,8 +1384,8 @@ pub struct TraitDecl {
     pub has_auto_impl: bool,
     pub is_marker: bool,
     pub is_coinductive: bool,
-    pub skip_array_during_method_dispatch: bool,
-    pub skip_boxed_slice_during_method_dispatch: bool,
+    pub skip_array_during_method_dispatch: Option<Edition>,
+    pub skip_boxed_slice_during_method_dispatch: Option<Edition>,
     pub specialization_kind: TraitSpecializationKind,
     pub must_implement_one_of: Option<Vec<Ident>>,
     pub implement_via_object: bool,

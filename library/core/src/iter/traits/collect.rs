@@ -277,7 +277,7 @@ pub trait FromIterator<A>: Sized {
     label = "`{Self}` is not an iterator",
     message = "`{Self}` is not an iterator"
 )]
-#[rustc_skip_during_method_dispatch(array, boxed_slice)]
+#[rustc_skip_during_method_dispatch(array = "2021", boxed_slice = "2024")]
 #[stable(feature = "rust1", since = "1.0.0")]
 pub trait IntoIterator {
     /// The type of the elements being iterated over.

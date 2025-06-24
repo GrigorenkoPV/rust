@@ -1156,7 +1156,7 @@ fn trait_def(tcx: TyCtxt<'_>, def_id: LocalDefId) -> ty::TraitDef {
         tcx.get_all_attrs(def_id),
         AttributeKind::SkipDuringMethodDispatch { array, boxed_slice, span:_ } => [*array, *boxed_slice]
     )
-    .unwrap_or([false; 2]);
+    .unwrap_or([None; 2]);
 
     let specialization_kind = if tcx.has_attr(def_id, sym::rustc_unsafe_specialization_marker) {
         ty::trait_def::TraitSpecializationKind::Marker

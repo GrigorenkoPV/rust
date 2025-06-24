@@ -2,6 +2,7 @@ use rustc_abi::Align;
 use rustc_ast::token::CommentKind;
 use rustc_ast::{self as ast, AttrStyle};
 use rustc_macros::{Decodable, Encodable, HashStable_Generic, PrintAttribute};
+use rustc_span::edition::Edition;
 use rustc_span::hygiene::Transparency;
 use rustc_span::{Span, Symbol};
 use thin_vec::ThinVec;
@@ -260,7 +261,7 @@ pub enum AttributeKind {
     Repr(ThinVec<(ReprAttr, Span)>),
 
     /// Represents `#[rustc_skip_during_method_dispatch]`.
-    SkipDuringMethodDispatch { array: bool, boxed_slice: bool, span: Span },
+    SkipDuringMethodDispatch { array: Option<Edition>, boxed_slice: Option<Edition>, span: Span },
 
     /// Represents `#[stable]`, `#[unstable]` and `#[rustc_allowed_through_unstable_modules]`.
     Stability {

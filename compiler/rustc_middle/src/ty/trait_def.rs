@@ -6,6 +6,7 @@ use rustc_hir as hir;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::{DefId, LOCAL_CRATE};
 use rustc_macros::{Decodable, Encodable, HashStable};
+use rustc_span::edition::Edition;
 use tracing::debug;
 
 use crate::query::LocalCrate;
@@ -50,15 +51,15 @@ pub struct TraitDef {
     /// added in the future.
     pub is_fundamental: bool,
 
-    /// If `true`, then this trait has the `#[rustc_skip_during_method_dispatch(array)]`
-    /// attribute, indicating that editions before 2021 should not consider this trait
+    /// If `true`, then this trait has the `#[rustc_skip_during_method_dispatch(array="edition")]`
+    /// attribute, indicating that editions before "edition" should not consider this trait
     /// during method dispatch if the receiver is an array.
-    pub skip_array_during_method_dispatch: bool,
+    pub skip_array_during_method_dispatch: Option<Edition>,
 
-    /// If `true`, then this trait has the `#[rustc_skip_during_method_dispatch(boxed_slice)]`
-    /// attribute, indicating that editions before 2024 should not consider this trait
+    /// If `true`, then this trait has the `#[rustc_skip_during_method_dispatch(boxed_slice="edition")]`
+    /// attribute, indicating that editions before "edition" should not consider this trait
     /// during method dispatch if the receiver is a boxed slice.
-    pub skip_boxed_slice_during_method_dispatch: bool,
+    pub skip_boxed_slice_during_method_dispatch: Option<Edition>,
 
     /// Used to determine whether the standard library is allowed to specialize
     /// on this trait.

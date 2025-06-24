@@ -21,6 +21,7 @@ use rustc_abi::Align;
 use rustc_ast::token::CommentKind;
 use rustc_ast::{AttrStyle, IntTy, UintTy};
 use rustc_ast_pretty::pp::Printer;
+use rustc_span::edition::Edition;
 use rustc_span::hygiene::Transparency;
 use rustc_span::{Span, Symbol};
 pub use stability::*;
@@ -159,7 +160,7 @@ macro_rules! print_tup {
 
 print_tup!(A B C D E F G H);
 print_skip!(Span, ());
-print_disp!(u16, bool, NonZero<u32>);
+print_disp!(u16, bool, NonZero<u32>, Edition);
 print_debug!(Symbol, UintTy, IntTy, Align, AttrStyle, CommentKind, Transparency);
 
 /// Finds attributes in sequences of attributes by pattern matching.

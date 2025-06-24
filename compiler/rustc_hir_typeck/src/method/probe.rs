@@ -1849,25 +1849,20 @@ impl<'a, 'tcx> ProbeContext<'a, 'tcx> {
                     ));
                 }
                 TraitCandidate(poly_trait_ref) => {
-                    // Some trait methods are excluded for arrays before 2021.
-                    // (`array.into_iter()` wants a slice iterator for compatibility.)
+                    // Handle `#[rustc_skip_during_method_dispatch]`
                     if let Some(method_name) = self.method_name {
-                        if self_ty.is_array() && !method_name.span.at_least_rust_2021() {
-                            let trait_def = self.tcx.trait_def(poly_trait_ref.def_id());
-                            if trait_def.skip_array_during_method_dispatch {
-                                return ProbeResult::NoMatch;
-                            }
-                        }
-
-                        // Some trait methods are excluded for boxed slices before 2024.
-                        // (`boxed_slice.into_iter()` wants a slice iterator for compatibility.)
-                        if self_ty.boxed_ty().is_some_and(Ty::is_slice)
-                            && !method_name.span.at_least_rust_2024()
+                        let trait_def = self.tcx.trait_def(poly_trait_ref.def_id());
+                        if let Some(edition) = trait_def.skip_array_during_method_dispatch
+                            && self_ty.is_array()
+                            && method_name.span.edition() < edition
                         {
-                            let trait_def = self.tcx.trait_def(poly_trait_ref.def_id());
-                            if trait_def.skip_boxed_slice_during_method_dispatch {
-                                return ProbeResult::NoMatch;
-                            }
+                            return ProbeResult::NoMatch;
+                        }
+                        if let Some(edition) = trait_def.skip_boxed_slice_during_method_dispatch
+                            && self_ty.boxed_ty().is_some_and(Ty::is_slice)
+                            && method_name.span.edition() < edition
+                        {
+                            return ProbeResult::NoMatch;
                         }
                     }
 
