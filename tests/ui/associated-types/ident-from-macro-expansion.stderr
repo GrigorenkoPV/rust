@@ -14,7 +14,7 @@ LL |         T::$id
    |            --- due to this macro variable
 ...
 LL |     let x: type_dependent!(T, Assoc);
-   |                               ^^^^^ associated type `Assoc` not found
+   |                               ^^^^^ help: `T` has the following associated type: `Metadata`
 
 error: aborting due to 2 previous errors
 
