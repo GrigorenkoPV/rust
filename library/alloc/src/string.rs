@@ -42,6 +42,7 @@
 
 #![stable(feature = "rust1", since = "1.0.0")]
 
+use core::cmp::Ordering;
 use core::error::Error;
 use core::iter::FusedIterator;
 #[cfg(not(no_global_oom_handling))]
@@ -2571,8 +2572,9 @@ impl<'b> Pattern for &'b String {
     }
 }
 
-macro_rules! impl_eq {
-    ($lhs:ty, $rhs: ty) => {
+//FIXME(delegation): this can be made prettier
+macro_rules! impl_cmp {
+    ($lhs:ty => $rhs:ty) => {
         #[stable(feature = "rust1", since = "1.0.0")]
         impl PartialEq<$rhs> for $lhs {
             #[inline]
@@ -2585,28 +2587,28 @@ macro_rules! impl_eq {
             }
         }
 
-        #[stable(feature = "rust1", since = "1.0.0")]
-        impl PartialEq<$lhs> for $rhs {
+        #[stable(feature = "more_partial_ord_for_strings", since="CURRENT_RUSTC_VERSION")]
+        impl PartialOrd<$rhs> for $lhs {
             #[inline]
-            fn eq(&self, other: &$lhs) -> bool {
-                PartialEq::eq(&self[..], &other[..])
-            }
-            #[inline]
-            fn ne(&self, other: &$lhs) -> bool {
-                PartialEq::ne(&self[..], &other[..])
+            fn partial_cmp(&self, other: &$rhs) -> Option<Ordering> {
+                PartialOrd::partial_cmp(&self[..], &other[..])
             }
         }
     };
+    ($lhs:ty, $rhs:ty) => {
+        impl_cmp!($lhs => $rhs);
+        impl_cmp!($rhs => $lhs);
+    };
 }
 
-impl_eq! { String, str }
-impl_eq! { String, &str }
+impl_cmp! { String, str }
+impl_cmp! { String, &str }
 #[cfg(not(no_global_oom_handling))]
-impl_eq! { Cow<'_, str>, str }
+impl_cmp! { Cow<'_, str>, str }
 #[cfg(not(no_global_oom_handling))]
-impl_eq! { Cow<'_, str>, &'_ str }
+impl_cmp! { Cow<'_, str>, &str }
 #[cfg(not(no_global_oom_handling))]
-impl_eq! { Cow<'_, str>, String }
+impl_cmp! { Cow<'_, str>, String }
 
 #[stable(feature = "rust1", since = "1.0.0")]
 impl Default for String {
