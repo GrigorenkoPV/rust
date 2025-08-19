@@ -521,7 +521,6 @@ trigger_files = [
     "src/tools/rustdoc-gui-test",
     "src/tools/libcxx-version",
     "x.py",
-    "x",
     "x.ps1"
 ]
 

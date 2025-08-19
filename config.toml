@@ -1,0 +1,37 @@
+# Includes one of the default files in src/bootstrap/defaults
+profile = "compiler"
+change-id = 160100
+
+[llvm]
+download-ci-llvm = true
+assertions = true
+
+[build]
+submodules = false
+# optimized-compiler-builtins = true
+low-priority = true
+tidy-extra-checks = "spellcheck"
+
+[rust]
+download-rustc = false
+debug-assertions = true
+
+debug = true
+# verify-llvm-ir = true
+# codegen-backends = ["llvm", "cranelift"]
+
+# debuginfo-level = 2
+
+# codegen-units = 2
+incremental = true
+# frame-pointers = true
+
+optimize-tests = false
+verbose-tests = false
+
+deny-warnings = false
+
+backtrace-on-ice = true
+break-on-ice = true
+
+parallel-frontend-threads = 0

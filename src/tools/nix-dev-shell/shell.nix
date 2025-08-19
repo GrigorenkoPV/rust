@@ -9,11 +9,12 @@ let
 in
 pkgs.mkShell {
   name = "rustc-shell";
+  __structuredAttrs = true;
+  strictDeps = true;
 
   inputsFrom = [ x ];
   packages = [
     pkgs.git
-    pkgs.nix
     pkgs.glibc.out
     pkgs.glibc.static
     x
