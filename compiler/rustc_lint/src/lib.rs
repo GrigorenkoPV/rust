@@ -68,6 +68,7 @@ mod noop_method_call;
 mod opaque_hidden_inferred_bound;
 mod pass_by_value;
 mod passes;
+mod perpetual;
 mod precedence;
 mod ptr_nulls;
 mod redundant_semicolon;
@@ -108,6 +109,7 @@ use nonstandard_style::*;
 use noop_method_call::*;
 use opaque_hidden_inferred_bound::*;
 use pass_by_value::*;
+use perpetual::*;
 use precedence::*;
 use ptr_nulls::*;
 use redundant_semicolon::*;
@@ -201,6 +203,7 @@ late_lint_methods!(
             LetUnderscore: LetUnderscore,
             InvalidReferenceCasting: InvalidReferenceCasting,
             ImplicitAutorefs: ImplicitAutorefs,
+            PerpetualInvariantMutBorrow: PerpetualInvariantMutBorrow,
             // Depends on referenced function signatures in expressions
             UnusedResults: UnusedResults,
             UnitBindings: UnitBindings,
