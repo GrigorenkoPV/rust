@@ -1,8 +1,9 @@
+use core::alloc::Allocator;
+use core::mem::{self, MaybeUninit};
 use core::ops::{Range, RangeBounds};
 use core::{fmt, ptr, slice};
 
 use super::Vec;
-use crate::alloc::{Allocator, Global};
 
 /// An iterator which uses a closure to determine if an element should be removed.
 ///
@@ -18,45 +19,37 @@ use crate::alloc::{Allocator, Global};
 #[stable(feature = "extract_if", since = "1.87.0")]
 #[must_use = "iterators are lazy and do nothing unless consumed; \
     use `retain_mut` or `extract_if().for_each(drop)` to remove and discard elements"]
-pub struct ExtractIf<
-    'a,
-    T,
-    F,
-    #[unstable(feature = "allocator_api", issue = "32838")] A: Allocator = Global,
-> {
-    valid_prefix: &'a mut Vec<T, A>,
+pub struct ExtractIf<'a, T, F> {
+    elements: &'a mut [MaybeUninit<T>],
+    valid_prefix_len: &'a mut usize,
 
     /// The number of items that have been drained (removed) thus far.
     hole_size: usize,
 
     /// Elements at and beyond this point will be retained. Must be equal or smaller than `old_len`.
     end: usize,
-    /// The original length of `vec` prior to draining.
-    old_len: usize,
     /// The filter test predicate.
     pred: F,
 }
 
-impl<'a, T, F, A: Allocator> ExtractIf<'a, T, F, A> {
-    pub(super) fn new<R: RangeBounds<usize>>(vec: &'a mut Vec<T, A>, pred: F, range: R) -> Self {
-        let old_len = vec.len();
+impl<'a, T, F> ExtractIf<'a, T, F> {
+    pub(super) fn new<R, A>(vec: &'a mut Vec<T, A>, pred: F, range: R) -> Self
+    where
+        R: RangeBounds<usize>,
+        A: Allocator,
+    {
+        let (elements, valid_prefix_len, _, _) = unsafe { vec.as_raw_parts_in() };
+        let old_len = *valid_prefix_len;
         let Range { start, end } = slice::range(range, ..old_len);
-
+        let elements = unsafe { slice::from_raw_parts_mut(elements.as_ptr().cast(), old_len) };
         // Guard against the vec getting leaked (leak amplification)
-        unsafe { vec.set_len(start) };
-        ExtractIf { valid_prefix: vec, hole_size: 0, end, old_len, pred }
-    }
-
-    /// Returns a reference to the underlying allocator.
-    #[unstable(feature = "allocator_api", issue = "32838")]
-    #[inline]
-    pub fn allocator(&self) -> &A {
-        self.valid_prefix.allocator()
+        *valid_prefix_len = start;
+        ExtractIf { elements, valid_prefix_len, hole_size: 0, end, pred }
     }
 }
 
 #[stable(feature = "extract_if", since = "1.87.0")]
-impl<T, F, A: Allocator> Iterator for ExtractIf<'_, T, F, A>
+impl<T, F> Iterator for ExtractIf<'_, T, F>
 where
     F: FnMut(&mut T) -> bool,
 {
@@ -64,43 +57,42 @@ where
 
     fn next(&mut self) -> Option<T> {
         loop {
-            let valid_prefix_len = self.valid_prefix.len();
-            let hole_size = self.hole_size;
-            let start = self.valid_prefix.as_mut_ptr();
-            let hole = unsafe { start.add(valid_prefix_len) };
-            let tail = unsafe { hole.add(hole_size) };
+            let valid_prefix_len = *self.valid_prefix_len;
 
-            if (self.pred)(
-                unsafe {
-                    slice::from_raw_parts_mut(tail, self.end - (hole_size + valid_prefix_len))
-                }
-                .first_mut()?,
-            ) {
+            let tail = unsafe { self.elements.get_unchecked_mut(valid_prefix_len..self.end) };
+
+            let next = tail.get_mut(self.hole_size)?;
+
+            if (self.pred)(unsafe { next.assume_init_mut() }) {
                 self.hole_size += 1;
                 // SAFETY: We never touch this element again after returning it.
-                return Some(unsafe { ptr::read(tail) });
+                return Some(unsafe { next.assume_init_read() });
             } else {
-                if self.hole_size > 0 {
-                    unsafe { ptr::copy_nonoverlapping(tail, hole, 1) };
+                if let Ok([to, from]) = tail.get_disjoint_mut([0, self.hole_size]) {
+                    unsafe { to.write(from.assume_init_read()) };
                 }
-                unsafe { self.valid_prefix.set_len(valid_prefix_len + 1) };
+                *self.valid_prefix_len += 1;
             }
         }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (0, Some(self.end - self.valid_prefix.len() - self.hole_size))
+        (0, Some(self.end - *self.valid_prefix_len - self.hole_size))
     }
 }
 
+unsafe fn assume_init_slice<T>(s: &[MaybeUninit<T>]) -> &[T] {
+    unsafe { mem::transmute(s) }
+}
+
 #[stable(feature = "extract_if", since = "1.87.0")]
-impl<T, F, A: Allocator> Drop for ExtractIf<'_, T, F, A> {
+impl<T, F> Drop for ExtractIf<'_, T, F> {
     fn drop(&mut self) {
         let hole_size = self.hole_size;
-        if hole_size > 0 {
-            let valid_prefix_len = self.valid_prefix.len();
-            let valid_tail_len = self.old_len - valid_prefix_len - hole_size;
-            let start = self.valid_prefix.as_mut_ptr();
+        if self.hole_size > 0 {
+            let valid_prefix_len = *self.valid_prefix_len;
+            let valid_tail_len = self.elements.len() - valid_prefix_len - hole_size;
+            let start = self.elements.as_mut_ptr();
 
             // SAFETY: Trailing unchecked items must be valid since we never touch them.
             unsafe {
@@ -108,33 +100,25 @@ impl<T, F, A: Allocator> Drop for ExtractIf<'_, T, F, A> {
                 ptr::copy(hole.add(hole_size), hole, valid_tail_len);
             }
         }
-        // SAFETY: After filling holes, all items are in contiguous memory.
-        unsafe {
-            self.valid_prefix.set_len(self.old_len - self.hole_size);
-        }
+        *self.valid_prefix_len = self.elements.len() - self.hole_size
     }
 }
 
 #[stable(feature = "extract_if", since = "1.87.0")]
-impl<T, F, A> fmt::Debug for ExtractIf<'_, T, F, A>
+impl<T, F> fmt::Debug for ExtractIf<'_, T, F>
 where
     T: fmt::Debug,
-    A: Allocator,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // We have to use pointer arithmetics here,
-        // because the length of `self.vec` is temporarily set to 0.
-        let start = self.valid_prefix.as_ptr();
+        let (retained, tail) = unsafe { self.elements.split_at_unchecked(*self.valid_prefix_len) };
+        let retained = unsafe { assume_init_slice(retained) };
 
-        let retained = self.valid_prefix.as_slice();
+        let valid_tail = unsafe { tail.get_unchecked(self.hole_size..) };
+        let valid_tail = unsafe { assume_init_slice(valid_tail) };
 
-        let tail_start = self.valid_prefix.len() + self.hole_size;
-
-        let valid_tail =
-            unsafe { slice::from_raw_parts(start.add(tail_start), self.old_len - tail_start) };
-
-        let (remainder, skipped_tail) =
-            unsafe { valid_tail.split_at_unchecked(self.end - tail_start) };
+        let (remainder, skipped_tail) = unsafe {
+            valid_tail.split_at_unchecked(self.end - (*self.valid_prefix_len + self.hole_size))
+        };
 
         f.debug_struct("ExtractIf")
             .field("retained", &retained)

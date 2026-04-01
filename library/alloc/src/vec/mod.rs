@@ -844,6 +844,11 @@ impl<T> Vec<T> {
         (me.as_mut_ptr(), me.len(), me.capacity())
     }
 
+    pub(crate) const unsafe fn as_raw_parts(&mut self) -> (NonNull<T>, &mut usize, usize) {
+        let (buf, len, capacity, _allocator) = unsafe { self.as_raw_parts_in() };
+        (buf, len, capacity)
+    }
+
     #[doc(alias = "into_non_null_parts")]
     /// Decomposes a `Vec<T>` into its raw components: `(NonNull pointer, length, capacity)`.
     ///
@@ -1415,6 +1420,12 @@ impl<T, A: Allocator> Vec<T, A> {
         let (ptr, len, capacity, alloc) = self.into_raw_parts_with_alloc();
         // SAFETY: A `Vec` always has a non-null pointer.
         (unsafe { NonNull::new_unchecked(ptr) }, len, capacity, alloc)
+    }
+
+    pub(crate) const unsafe fn as_raw_parts_in(&mut self) -> (NonNull<T>, &mut usize, usize, &A) {
+        let Self { buf, len } = self;
+        let capacity = buf.capacity();
+        (buf.non_null(), len, capacity, buf.allocator())
     }
 
     /// Returns the total number of elements the vector can hold without
@@ -4171,7 +4182,7 @@ impl<T, A: Allocator> Vec<T, A> {
     /// assert_eq!(ones.len(), 3);
     /// ```
     #[stable(feature = "extract_if", since = "1.87.0")]
-    pub fn extract_if<F, R>(&mut self, range: R, filter: F) -> ExtractIf<'_, T, F, A>
+    pub fn extract_if<F, R>(&mut self, range: R, filter: F) -> ExtractIf<'_, T, F>
     where
         F: FnMut(&mut T) -> bool,
         R: RangeBounds<usize>,
