@@ -1109,7 +1109,7 @@ impl<'ast, 'ra, 'tcx> Visitor<'ast> for LateResolutionVisitor<'_, 'ast, 'ra, 'tc
             // Create a label rib for the function.
             this.with_label_rib(RibKind::FnOrCoroutine, |this| {
                 match fn_kind {
-                    FnKind::Fn(_, _, Fn { sig, generics, contract, body, .. }) => {
+                    FnKind::Fn(_, _, Fn { sig, generics, contract, body, fuse, .. }) => {
                         this.visit_generics(generics);
 
                         let declaration = &sig.decl;
@@ -1142,7 +1142,12 @@ impl<'ast, 'ra, 'tcx> Visitor<'ast> for LateResolutionVisitor<'_, 'ast, 'ra, 'tc
                             // Resolve the function body, potentially inside the body of an async closure
                             this.with_lifetime_rib(
                                 LifetimeRibKind::Elided(LifetimeRes::Infer),
-                                |this| this.visit_block(body),
+                                |this| {
+                                    this.visit_block(body);
+                                    if let Some(fuse) = fuse {
+                                        this.visit_block(fuse)
+                                    }
+                                },
                             );
 
                             debug!("(resolving function) leaving function");

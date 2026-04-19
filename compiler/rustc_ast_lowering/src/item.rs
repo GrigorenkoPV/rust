@@ -359,6 +359,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 ident,
                 generics,
                 body,
+                fuse,
                 contract,
                 define_opaque,
                 ..
@@ -369,6 +370,9 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                     // only cares about the input argument patterns in the function
                     // declaration (decl), not the return types.
                     let coroutine_kind = header.coroutine_kind;
+                    if let Some(_) = fuse {
+                        // FIXME(fused_futures): lower
+                    }
                     let body_id = this.lower_maybe_coroutine_body(
                         *fn_sig_span,
                         span,
@@ -1055,10 +1059,14 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 ident,
                 generics,
                 body: Some(body),
+                fuse,
                 contract,
                 define_opaque,
                 ..
             }) => {
+                if let Some(fuse) = fuse {
+                    todo!("FIXME(fused_futures): lower {fuse:?}")
+                }
                 let body_id = self.lower_maybe_coroutine_body(
                     sig.span,
                     i.span,
@@ -1249,10 +1257,14 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 ident,
                 generics,
                 body,
+                fuse,
                 contract,
                 define_opaque,
                 ..
             }) => {
+                if let Some(fuse) = fuse {
+                    todo!("FIXME(fused_futures): lower {fuse:?}")
+                }
                 let body_id = self.lower_maybe_coroutine_body(
                     sig.span,
                     i.span,

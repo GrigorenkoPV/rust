@@ -343,6 +343,7 @@ mod llvm_enzyme {
             generics,
             contract: None,
             body: Some(d_body),
+            fuse: None,
             define_opaque: None,
             eii_impls: ThinVec::new(),
         });

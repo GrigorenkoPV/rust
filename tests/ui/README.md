@@ -660,6 +660,10 @@ See [RFC 0736 Privacy-respecting Functional Struct Update](https://github.com/ru
 
 Tests on closures. See [Closure expressions | Reference](https://doc.rust-lang.org/reference/expressions/closure-expr.html).
 
+## `tests/ui/fused-futures/`: `#![feature(fused_futures)]`
+
+See [this PR](https://github.com/rust-lang/rust/pulls/147129).
+
 ## `tests/ui/generic-associated-types/`
 
 Tests on Generic Associated Types (GATs).

@@ -526,6 +526,8 @@ declare_features! (
     (internal, freeze_impls, "1.78.0", Some(121675)),
     /// Frontmatter `---` blocks for use by external tools.
     (unstable, frontmatter, "1.88.0", Some(136889)),
+    /// Allows to customize behavior of a future/coroutine polled after completion
+    (incomplete, fused_futures, "CURRENT_RUSTC_VERSION", Some(147129)),
     /// Allows defining gen blocks and `gen fn`.
     (unstable, gen_blocks, "1.75.0", Some(117078)),
     /// Allows using generics in more complex const expressions, based on definitional equality.

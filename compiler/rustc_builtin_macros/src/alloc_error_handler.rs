@@ -89,6 +89,7 @@ fn generate_handler(cx: &ExtCtxt<'_>, handler: Ident, span: Span, sig_span: Span
         generics: Generics::default(),
         contract: None,
         body,
+        fuse: None,
         define_opaque: None,
         eii_impls: ThinVec::new(),
     }));

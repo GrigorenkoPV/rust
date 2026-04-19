@@ -714,8 +714,17 @@ impl<'a> State<'a> {
     }
 
     fn print_fn_full(&mut self, vis: &ast::Visibility, attrs: &[ast::Attribute], func: &ast::Fn) {
-        let ast::Fn { defaultness, ident, generics, sig, contract, body, define_opaque, eii_impls } =
-            func;
+        let ast::Fn {
+            defaultness,
+            ident,
+            generics,
+            sig,
+            contract,
+            body,
+            fuse,
+            define_opaque,
+            eii_impls,
+        } = func;
 
         self.print_define_opaques(define_opaque.as_deref());
 
@@ -744,6 +753,9 @@ impl<'a> State<'a> {
             self.print_block_with_attrs(body, attrs, cb, ib);
         } else {
             self.word(";");
+        }
+        if let Some(fuse) = fuse {
+            todo!("FIXME(fused_futures): print fuse: {fuse:?}")
         }
     }
 

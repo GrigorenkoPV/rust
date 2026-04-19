@@ -212,7 +212,13 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                 ctxt,
                 _vis,
                 Fn {
-                    sig: FnSig { header, decl, span: _ }, ident, generics, contract, body, ..
+                    sig: FnSig { header, decl, span: _ },
+                    ident,
+                    generics,
+                    contract,
+                    body,
+                    fuse,
+                    ..
                 },
             ) if let Some(coroutine_kind) = header.coroutine_kind
                 // Foreign ones are denied, so don't create them here.
@@ -243,7 +249,12 @@ impl<'a, 'ra, 'tcx> visit::Visitor<'a> for DefCollector<'a, 'ra, 'tcx> {
                 if let Some(body) = body {
                     let closure_def =
                         self.create_def(coroutine_kind.closure_id(), None, DefKind::Closure, span);
-                    self.with_parent(closure_def, |this| this.visit_block(body));
+                    self.with_parent(closure_def, |this| {
+                        this.visit_block(body);
+                        if let Some(fuse) = fuse {
+                            this.visit_block(fuse);
+                        }
+                    });
                 }
             }
             FnKind::Closure(binder, Some(coroutine_kind), decl, body) => {

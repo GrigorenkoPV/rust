@@ -1230,6 +1230,7 @@ impl<'a> Visitor<'a> for AstValidator<'a> {
                     sig,
                     contract: _,
                     body,
+                    fuse,
                     define_opaque: _,
                     eii_impls,
                 },
@@ -1263,6 +1264,9 @@ impl<'a> Visitor<'a> for AstValidator<'a> {
                             }
                         },
                     });
+                }
+                if fuse.is_some() && body.is_none() {
+                    todo!("FIXME(fused_futures): report an error here")
                 }
 
                 let kind = FnKind::Fn(FnCtxt::Free, &item.vis, &*func);
@@ -1479,9 +1483,12 @@ impl<'a> Visitor<'a> for AstValidator<'a> {
 
     fn visit_foreign_item(&mut self, fi: &'a ForeignItem) {
         match &fi.kind {
-            ForeignItemKind::Fn(box Fn { defaultness, ident, sig, body, .. }) => {
+            ForeignItemKind::Fn(box Fn { defaultness, ident, sig, body, fuse, .. }) => {
                 self.check_defaultness(fi.span, *defaultness, AllowDefault::No, AllowFinal::No);
                 self.check_foreign_fn_bodyless(*ident, body.as_deref());
+                if fuse.is_some() {
+                    todo!("FIXME(fused_futures): report an error here")
+                }
                 self.check_foreign_fn_headerless(sig.header);
                 self.check_foreign_item_ascii_only(*ident);
                 self.check_extern_fn_signature(
@@ -1815,12 +1822,15 @@ impl<'a> Visitor<'a> for AstValidator<'a> {
                         });
                     }
                 }
-                AssocItemKind::Fn(box Fn { body, .. }) => {
+                AssocItemKind::Fn(box Fn { body, fuse, .. }) => {
                     if body.is_none() && !self.is_sdylib_interface {
                         self.dcx().emit_err(errors::AssocFnWithoutBody {
                             span: item.span,
                             replace_span: self.ending_semi_or_hi(item.span),
                         });
+                    }
+                    if fuse.is_some() && body.is_none() {
+                        todo!("FIXME(fused_futures): report an error here")
                     }
                 }
                 AssocItemKind::Type(box TyAlias { bounds, ty, .. }) => {

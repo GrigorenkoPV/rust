@@ -271,7 +271,7 @@ impl<'a> Parser<'a> {
                 self.psess.gated_spans.gate(sym::min_specialization, span);
                 self.psess.gated_spans.ungate_last(sym::specialization, span);
             }
-            let (ident, sig, generics, contract, body) =
+            let (ident, sig, generics, contract, [body, fuse]) =
                 self.parse_fn(attrs, fn_parse_mode, lo, vis, case)?;
             ItemKind::Fn(Box::new(Fn {
                 defaultness,
@@ -280,6 +280,7 @@ impl<'a> Parser<'a> {
                 generics,
                 contract,
                 body,
+                fuse,
                 define_opaque: None,
                 eii_impls: ThinVec::new(),
             }))
@@ -2716,7 +2717,8 @@ impl<'a> Parser<'a> {
         sig_lo: Span,
         vis: &Visibility,
         case: Case,
-    ) -> PResult<'a, (Ident, FnSig, Generics, Option<Box<FnContract>>, Option<Box<Block>>)> {
+    ) -> PResult<'a, (Ident, FnSig, Generics, Option<Box<FnContract>>, [Option<Box<Block>>; 2])>
+    {
         let fn_span = self.token.span;
         let header = self.parse_fn_front_matter(vis, case, FrontMatterParsingMode::Function)?; // `const ... fn`
         let ident = self.parse_ident()?; // `foo`
@@ -2749,10 +2751,10 @@ impl<'a> Parser<'a> {
 
         let mut sig_hi = self.prev_token.span;
         // Either `;` or `{ ... }`.
-        let body =
+        let body_and_fuse =
             self.parse_fn_body(attrs, &ident, &mut sig_hi, fn_parse_mode.req_body, fn_params_end)?;
         let fn_sig_span = sig_lo.to(sig_hi);
-        Ok((ident, FnSig { header, decl, span: fn_sig_span }, generics, contract, body))
+        Ok((ident, FnSig { header, decl, span: fn_sig_span }, generics, contract, body_and_fuse))
     }
 
     /// Provide diagnostics when function body is not found
@@ -2833,6 +2835,27 @@ impl<'a> Parser<'a> {
         }
     }
 
+    fn parse_do_fuse(&mut self) -> PResult<'a, Box<Block>> {
+        let span = if self.token.is_keyword(kw::Do) {
+            let span = self.token.span;
+            self.bump();
+            Ok(span)
+        } else {
+            self.unexpected_any()
+        }?;
+        let span = span.to(if self.token.is_keyword(kw::Fuse) {
+            let span = self.token.span;
+            self.bump();
+            Ok(span)
+        } else {
+            self.unexpected_any()
+        }?);
+        let res = self.parse_block()?;
+        let span = span.to(res.span);
+        self.psess.gated_spans.gate(sym::fused_futures, span);
+        Ok(res)
+    }
+
     /// Parse the "body" of a function.
     /// This can either be `;` when there's no body,
     /// or e.g. a block when the function is a provided one.
@@ -2843,18 +2866,18 @@ impl<'a> Parser<'a> {
         sig_hi: &mut Span,
         req_body: bool,
         fn_params_end: Option<Span>,
-    ) -> PResult<'a, Option<Box<Block>>> {
+    ) -> PResult<'a, [Option<Box<Block>>; 2]> {
         let has_semi = if req_body {
             self.token == TokenKind::Semi
         } else {
             // Only include `;` in list of expected tokens if body is not required
             self.check(exp!(Semi))
         };
-        let (inner_attrs, body) = if has_semi {
+        let (inner_attrs, body, fuse) = if has_semi {
             // Include the trailing semicolon in the span of the signature
             self.expect_semi()?;
             *sig_hi = self.prev_token.span;
-            (AttrVec::new(), None)
+            (AttrVec::new(), None, None)
         } else if self.check(exp!(OpenBrace)) || self.token.is_metavar_block() {
             let prev_in_fn_body = self.in_fn_body;
             self.in_fn_body = true;
@@ -2869,8 +2892,14 @@ impl<'a> Parser<'a> {
                     (attrs, Some(body))
                 },
             );
+            let fuse = if self.token.is_keyword(kw::Do) && self.is_keyword_ahead(1, &[kw::Fuse]) {
+                Some(self.parse_do_fuse())
+            } else {
+                None
+            };
             self.in_fn_body = prev_in_fn_body;
-            res?
+            let (inner_attrs, body) = res?;
+            (inner_attrs, body, fuse.transpose()?)
         } else if self.token == token::Eq {
             // Recover `fn foo() = $expr;`.
             self.bump(); // `=`
@@ -2882,13 +2911,13 @@ impl<'a> Parser<'a> {
                 span,
                 sugg: errors::FunctionBodyEqualsExprSugg { eq: eq_sp, semi: self.prev_token.span },
             });
-            (AttrVec::new(), Some(self.mk_block_err(span, guar)))
+            (AttrVec::new(), Some(self.mk_block_err(span, guar)), None)
         } else {
             self.error_fn_body_not_found(ident.span, req_body, fn_params_end)?;
-            (AttrVec::new(), None)
+            (AttrVec::new(), None, None)
         };
         attrs.extend(inner_attrs);
-        Ok(body)
+        Ok([body, fuse])
     }
 
     fn check_impl_frontmatter(&mut self, look_ahead: usize) -> bool {
