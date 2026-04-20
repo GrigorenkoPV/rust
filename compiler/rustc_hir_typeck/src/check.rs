@@ -127,6 +127,11 @@ pub(super) fn check_fn<'a, 'tcx>(
 
     fcx.is_whole_body.set(true);
     fcx.check_return_or_body_tail(body.value, false);
+    if let Some(fuse) = body.fuse {
+        // TODO: check that coroutine_types permits a fuse
+        // TODO: typecheck
+        todo!("FIXME(fused_futures): typecheck {fuse:?}")
+    }
 
     // Finalize the return check by taking the LUB of the return types
     // we saw and assigning it to the expected return type. This isn't

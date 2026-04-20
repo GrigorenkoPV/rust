@@ -441,7 +441,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
 
             let final_expr = this.finalize_body_lowering(delegation, args, generics, span);
 
-            (this.arena.alloc_from_iter(parameters), final_expr)
+            (this.arena.alloc_from_iter(parameters), final_expr, None)
         })
     }
 
@@ -639,7 +639,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 targeted_by_break: false,
             });
 
-            (&[], this.mk_expr(hir::ExprKind::Block(block, None), span))
+            (&[], this.mk_expr(hir::ExprKind::Block(block, None), span), None)
         });
 
         let generics = hir::Generics::empty();

@@ -351,7 +351,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                         kind: hir::ExprKind::Block(self.lower_block(block, false), None),
                         span: self.lower_span(*span),
                     };
-                    self.record_body(&[], body)
+                    self.record_body(&[], body, None)
                 }),
             ),
             ItemKind::Fn(box Fn {
@@ -370,9 +370,6 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                     // only cares about the input argument patterns in the function
                     // declaration (decl), not the return types.
                     let coroutine_kind = header.coroutine_kind;
-                    if let Some(_) = fuse {
-                        // FIXME(fused_futures): lower
-                    }
                     let body_id = this.lower_maybe_coroutine_body(
                         *fn_sig_span,
                         span,
@@ -380,6 +377,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                         decl,
                         coroutine_kind,
                         body.as_deref(),
+                        fuse.as_deref(),
                         attrs,
                         contract.as_deref(),
                         header.constness,
@@ -422,8 +420,8 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             },
             ItemKind::GlobalAsm(asm) => {
                 let asm = self.lower_inline_asm(span, asm);
-                let fake_body =
-                    self.lower_body(|this| (&[], this.expr(span, hir::ExprKind::InlineAsm(asm))));
+                let fake_body = self
+                    .lower_body(|this| (&[], this.expr(span, hir::ExprKind::InlineAsm(asm)), None));
                 hir::ItemKind::GlobalAsm { asm, fake_body }
             }
             ItemKind::TyAlias(box TyAlias { ident, generics, after_where_clause, ty, .. }) => {
@@ -1064,9 +1062,6 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 define_opaque,
                 ..
             }) => {
-                if let Some(fuse) = fuse {
-                    todo!("FIXME(fused_futures): lower {fuse:?}")
-                }
                 let body_id = self.lower_maybe_coroutine_body(
                     sig.span,
                     i.span,
@@ -1074,6 +1069,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                     &sig.decl,
                     sig.header.coroutine_kind,
                     Some(body),
+                    fuse.as_deref(),
                     attrs,
                     contract.as_deref(),
                     sig.header.constness,
@@ -1262,9 +1258,6 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 define_opaque,
                 ..
             }) => {
-                if let Some(fuse) = fuse {
-                    todo!("FIXME(fused_futures): lower {fuse:?}")
-                }
                 let body_id = self.lower_maybe_coroutine_body(
                     sig.span,
                     i.span,
@@ -1272,6 +1265,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                     &sig.decl,
                     sig.header.coroutine_kind,
                     body.as_deref(),
+                    fuse.as_deref(),
                     attrs,
                     contract.as_deref(),
                     sig.header.constness,
@@ -1391,8 +1385,13 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
         &mut self,
         params: &'hir [hir::Param<'hir>],
         value: hir::Expr<'hir>,
+        fuse: Option<hir::Expr<'hir>>,
     ) -> hir::BodyId {
-        let body = hir::Body { params, value: self.arena.alloc(value) };
+        let body = hir::Body {
+            params,
+            value: self.arena.alloc(value),
+            fuse: fuse.map(|fuse| &*self.arena.alloc(fuse)),
+        };
         let id = body.id();
         assert_eq!(id.hir_id.owner, self.current_hir_id_owner);
         self.bodies.push((id.hir_id.local_id, self.arena.alloc(body)));
@@ -1401,13 +1400,15 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
 
     pub(super) fn lower_body(
         &mut self,
-        f: impl FnOnce(&mut Self) -> (&'hir [hir::Param<'hir>], hir::Expr<'hir>),
+        f: impl FnOnce(
+            &mut Self,
+        ) -> (&'hir [hir::Param<'hir>], hir::Expr<'hir>, Option<hir::Expr<'hir>>),
     ) -> hir::BodyId {
         let prev_coroutine_kind = self.coroutine_kind.take();
         let prev_is_in_const_context = mem::take(&mut self.is_in_const_context);
         let task_context = self.task_context.take();
-        let (parameters, result) = f(self);
-        let body_id = self.record_body(parameters, result);
+        let (parameters, body, fuse) = f(self);
+        let body_id = self.record_body(parameters, body, fuse);
         self.task_context = task_context;
         self.coroutine_kind = prev_coroutine_kind;
         self.is_in_const_context = prev_is_in_const_context;
@@ -1440,11 +1441,12 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 this.arena.alloc_from_iter(decl.inputs.iter().map(|x| this.lower_param(x)));
 
             // Optionally lower the fn contract
-            if let Some(contract) = contract {
-                (params, this.lower_contract(body, contract))
+            let body = if let Some(contract) = contract {
+                this.lower_contract(body, contract)
             } else {
-                (params, body(this))
-            }
+                body(this)
+            };
+            (params, body, None)
         })
     }
 
@@ -1469,6 +1471,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                     }
                     None => this.expr_err(span, this.dcx().span_delayed_bug(span, "no block")),
                 },
+                None,
             )
         })
     }
@@ -1483,6 +1486,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
         decl: &FnDecl,
         coroutine_kind: Option<CoroutineKind>,
         body: Option<&Block>,
+        fuse: Option<&Block>,
         attrs: &'hir [hir::Attribute],
         contract: Option<&FnContract>,
         constness: Const,
@@ -1522,7 +1526,11 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
         self.lower_body(|this| {
             let (parameters, expr) = this.lower_coroutine_body_with_moved_arguments(
                 decl,
-                |this| this.lower_block_expr(body),
+                |this| {
+                    let body = this.lower_block_expr(body);
+                    let fuse = fuse.map(|fuse| this.lower_block_expr(fuse));
+                    (body, fuse)
+                },
                 fn_decl_span,
                 body.span,
                 coroutine_kind,
@@ -1533,7 +1541,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             let hir_id = expr.hir_id;
             this.maybe_forward_track_caller(body.span, fn_id, hir_id);
 
-            (parameters, expr)
+            (parameters, expr, None)
         })
     }
 
@@ -1544,7 +1552,9 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
     pub(crate) fn lower_coroutine_body_with_moved_arguments(
         &mut self,
         decl: &FnDecl,
-        lower_body: impl FnOnce(&mut LoweringContext<'_, 'hir, R>) -> hir::Expr<'hir>,
+        lower_body: impl FnOnce(
+            &mut LoweringContext<'_, 'hir, R>,
+        ) -> (hir::Expr<'hir>, Option<hir::Expr<'hir>>),
         fn_decl_span: Span,
         body_span: Span,
         coroutine_kind: CoroutineKind,
@@ -1683,7 +1693,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
 
         let mkbody = |this: &mut LoweringContext<'_, 'hir, R>| {
             // Create a block from the user's function body:
-            let user_body = lower_body(this);
+            let (user_body, fuse) = lower_body(this);
 
             // Transform into `drop-temps { <user-body> }`, an expression:
             let desugared_span =
@@ -1705,7 +1715,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                 Some(user_body),
             );
 
-            this.expr_block(body)
+            (this.expr_block(body), fuse)
         };
         let desugaring_kind = match coroutine_kind {
             CoroutineKind::Async { .. } => hir::CoroutineDesugaring::Async,

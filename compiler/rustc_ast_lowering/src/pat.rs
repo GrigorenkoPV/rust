@@ -511,6 +511,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                         kind: hir::ExprKind::Call(fn_def, args),
                         span,
                     },
+                    None,
                 )
             });
             hir::AnonConst { def_id, hir_id, body, span }
@@ -557,7 +558,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             self.arena.alloc(hir::AnonConst {
                 def_id,
                 hir_id,
-                body: this.lower_body(|_this| (&[], path_expr)),
+                body: this.lower_body(|_this| (&[], path_expr, None)),
                 span,
             })
         });

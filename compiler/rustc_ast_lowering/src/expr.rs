@@ -262,7 +262,15 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
                         e.span,
                         desugaring_kind,
                         hir::CoroutineSource::Block,
-                        |this| this.with_new_scopes(e.span, |this| this.lower_block_expr(block)),
+                        |this| {
+                            this.with_new_scopes(e.span, |this| {
+                                (
+                                    this.lower_block_expr(block),
+                                    // FIXME(fused_futures): support coroutines
+                                    None,
+                                )
+                            })
+                        },
                     )
                 }
                 ExprKind::Block(blk, opt_label) => {
@@ -706,7 +714,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
         span: Span,
         desugaring_kind: hir::CoroutineDesugaring,
         coroutine_source: hir::CoroutineSource,
-        body: impl FnOnce(&mut Self) -> hir::Expr<'hir>,
+        body: impl FnOnce(&mut Self) -> (hir::Expr<'hir>, Option<hir::Expr<'hir>>),
     ) -> hir::ExprKind<'hir> {
         let closure_def_id = self.local_def_id(closure_node_id);
         let coroutine_kind = hir::CoroutineKind::Desugared(desugaring_kind, coroutine_source);
@@ -765,10 +773,10 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             if task_context.is_some() {
                 this.task_context = task_context;
             }
-            let res = body(this);
+            let (body, fuse) = body(this);
             this.task_context = old_ctx;
 
-            (params, res)
+            (params, body, fuse)
         });
 
         // `static |<_task_context?>| -> <return_ty> { <body> }`:
@@ -1182,7 +1190,15 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
             let body_id = this.lower_body(|this| {
                 let (parameters, expr) = this.lower_coroutine_body_with_moved_arguments(
                     &inner_decl,
-                    |this| this.with_new_scopes(fn_decl_span, |this| this.lower_expr_mut(body)),
+                    |this| {
+                        this.with_new_scopes(fn_decl_span, |this| {
+                            (
+                                this.lower_expr_mut(body),
+                                //FIXME(fused_futures): supprot async closures
+                                None,
+                            )
+                        })
+                    },
                     fn_decl_span,
                     body.span,
                     coroutine_kind,
@@ -1191,7 +1207,7 @@ impl<'hir, R: ResolverAstLoweringExt<'hir>> LoweringContext<'_, 'hir, R> {
 
                 this.maybe_forward_track_caller(body.span, closure_hir_id, expr.hir_id);
 
-                (parameters, expr)
+                (parameters, expr, None)
             });
             body_id
         });
