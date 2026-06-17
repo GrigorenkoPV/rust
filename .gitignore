@@ -17,11 +17,8 @@ Session.vim
 .cproject
 .idea
 *.iml
-.vscode
 .project
 .vim/
-.helix/
-.zed/
 .gram/
 .favorites.json
 .settings/
@@ -35,8 +32,6 @@ Session.vim
 !/tests/run-make/thumb-none-qemu/example/.cargo
 
 ## Configuration
-/bootstrap.toml
-/config.toml
 /Makefile
 config.mk
 config.stamp
@@ -49,7 +44,8 @@ no_llvm_build
 /llvm/
 /mingw-build/
 /build
-/build-rust-analyzer
+/build-rust-analyzer/*
+!/build-rust-analyzer/cache
 /dist/
 /unicode-downloads
 /target
@@ -96,8 +92,7 @@ tests/rustdoc-gui/src/**.lock
 test-dashboard/
 
 ## direnv
-/.envrc
-/.direnv/
+.direnv/
 
 ## nix
 /flake.nix
