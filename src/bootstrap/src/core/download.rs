@@ -211,9 +211,13 @@ impl Config {
             }
 
             if self.should_patchelf() {
-                self.patchelfs(&bin_root.join("bin"), &["rustc", "rustdoc"]);
+                self.patchelfs(&bin_root.join("bin"), &["cargo", "rustc", "rustdoc"]);
                 self.patchelfs(&bin_root.join("libexec"), &["rust-analyzer-proc-macro-srv"]);
-                self.patchelf_all_so(&bin_root.join("lib"));
+                let lib_dir = bin_root.join("lib");
+                self.patchelf_all_so(&lib_dir);
+                let rustlib_bin_dir = lib_dir.join("rustlib").join(host).join("bin");
+                self.patchelfs(&rustlib_bin_dir, &["rust-lld"]);
+                self.patchelfs(&rustlib_bin_dir.join("gcc-ld"), &["ld.lld"]);
             }
 
             t!(rustc_stamp.write());
@@ -608,9 +612,14 @@ fn download_toolchain<'a>(
 
         let ctx = (dwn_ctx, out);
         if ctx.should_patchelf() {
-            ctx.patchelfs(&bin_root.join("bin"), &["rustc", "rustdoc"]);
+            ctx.patchelfs(&bin_root.join("bin"), &["cargo", "rustc", "rustdoc"]);
             ctx.patchelfs(&bin_root.join("libexec"), &["rust-analyzer-proc-macro-srv"]);
-            ctx.patchelf_all_so(&bin_root.join("lib"));
+            let lib_dir = bin_root.join("lib");
+            ctx.patchelf_all_so(&lib_dir);
+            let rustlib_bin_dir =
+                lib_dir.join("rustlib").join(dwn_ctx.host_target.triple).join("bin");
+            ctx.patchelfs(&rustlib_bin_dir, &["rust-lld"]);
+            ctx.patchelfs(&rustlib_bin_dir.join("gcc-ld"), &["ld.lld"]);
         }
 
         t!(rustc_stamp.write());
