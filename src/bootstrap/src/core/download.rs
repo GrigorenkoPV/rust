@@ -56,23 +56,6 @@ impl Config {
         tmp
     }
 
-    /// Whether or not `fix_bin_or_dylib` needs to be run; can only be true
-    /// on NixOS
-    fn should_fix_bins_and_dylibs(&self) -> bool {
-        should_fix_bins_and_dylibs(self.patch_binaries_for_nix, &self.exec_ctx)
-    }
-
-    /// Modifies the interpreter section of 'fname' to fix the dynamic linker,
-    /// or the RPATH section, to fix the dynamic library search path
-    ///
-    /// This is only required on NixOS and uses the PatchELF utility to
-    /// change the interpreter/RPATH of ELF executables.
-    ///
-    /// Please see <https://nixos.org/patchelf.html> for more information
-    fn fix_bin_or_dylib(&self, fname: &Path) {
-        fix_bin_or_dylib(&self.out, fname, &self.exec_ctx);
-    }
-
     fn download_file(&self, url: &str, dest_path: &Path, help_on_error: &str) {
         let dwn_ctx: DownloadContext<'_> = self.into();
         download_file(dwn_ctx, &self.out, url, dest_path, help_on_error);
@@ -114,18 +97,21 @@ impl Config {
         let date = &self.stage0_metadata.compiler.date;
         let version = &self.stage0_metadata.compiler.version;
         let host = self.host_target;
-
         let clippy_stamp = BuildStamp::new(initial_sysroot).with_prefix("clippy").add_stamp(date);
-        let cargo_clippy = initial_sysroot.join("bin").join(exe("cargo-clippy", host));
+        let cargo_clippy_name = exe("cargo-clippy", host);
+        let bin_dir = initial_sysroot.join("bin");
+        let cargo_clippy = bin_dir.join(&cargo_clippy_name);
+
         if cargo_clippy.exists() && clippy_stamp.is_up_to_date() {
             return cargo_clippy;
         }
 
         let filename = format!("clippy-{version}-{host}.tar.xz");
         self.download_component(DownloadSource::Dist, filename, "clippy-preview", date, "stage0");
-        if self.should_fix_bins_and_dylibs() {
-            self.fix_bin_or_dylib(&cargo_clippy);
-            self.fix_bin_or_dylib(&cargo_clippy.with_file_name(exe("clippy-driver", host)));
+
+        if self.should_patchelf() {
+            let clippy_driver_name = exe("clippy-driver", host);
+            self.patchelfs(&bin_dir, &[&cargo_clippy_name, &clippy_driver_name]);
         }
 
         t!(clippy_stamp.write());
@@ -224,19 +210,10 @@ impl Config {
                 download_component(self, filename, component, stamp_key);
             }
 
-            if self.should_fix_bins_and_dylibs() {
-                self.fix_bin_or_dylib(&bin_root.join("bin").join("rustc"));
-                self.fix_bin_or_dylib(&bin_root.join("bin").join("rustdoc"));
-                self.fix_bin_or_dylib(
-                    &bin_root.join("libexec").join("rust-analyzer-proc-macro-srv"),
-                );
-                let lib_dir = bin_root.join("lib");
-                for lib in t!(fs::read_dir(&lib_dir), lib_dir.display().to_string()) {
-                    let lib = t!(lib);
-                    if path_is_dylib(&lib.path()) {
-                        self.fix_bin_or_dylib(&lib.path());
-                    }
-                }
+            if self.should_patchelf() {
+                self.patchelfs(&bin_root.join("bin"), &["rustc", "rustdoc"]);
+                self.patchelfs(&bin_root.join("libexec"), &["rust-analyzer-proc-macro-srv"]);
+                self.patchelf_all_so(&bin_root.join("lib"));
             }
 
             t!(rustc_stamp.write());
@@ -298,11 +275,7 @@ impl Config {
         if !llvm_stamp.is_up_to_date() && !self.dry_run() {
             self.download_ci_llvm(&llvm_root, target, &llvm_sha);
 
-            if self.should_fix_bins_and_dylibs() {
-                for entry in t!(fs::read_dir(llvm_root.join("bin"))) {
-                    self.fix_bin_or_dylib(&t!(entry).path());
-                }
-            }
+            self.patchelf_all(&llvm_root.join("bin"));
 
             // Update the timestamp of llvm-config to force rustc_llvm to be
             // rebuilt. This is a hacky workaround for a deficiency in Cargo where
@@ -318,15 +291,7 @@ impl Config {
             let llvm_config = llvm_root.join("bin").join(exe("llvm-config", target));
             t!(crate::utils::helpers::set_file_times(llvm_config, file_times));
 
-            if self.should_fix_bins_and_dylibs() {
-                let llvm_lib = llvm_root.join("lib");
-                for entry in t!(fs::read_dir(llvm_lib)) {
-                    let lib = t!(entry).path();
-                    if path_is_dylib(&lib) {
-                        self.fix_bin_or_dylib(&lib);
-                    }
-                }
-            }
+            self.patchelf_all_so(&llvm_root.join("lib"));
 
             t!(llvm_stamp.write());
         }
@@ -422,15 +387,7 @@ impl Config {
         }
         self.unpack(&tarball, root_dir, "gcc-dev");
 
-        if self.should_fix_bins_and_dylibs() {
-            let lib_dir = root_dir.join("lib");
-            for entry in t!(fs::read_dir(lib_dir)) {
-                let lib = t!(entry).path();
-                if path_is_dylib(&lib) {
-                    self.fix_bin_or_dylib(&lib);
-                }
-            }
-        }
+        self.patchelf_all_so(&root_dir.join("lib"));
     }
 }
 
@@ -570,16 +527,9 @@ pub(crate) fn maybe_download_rustfmt(config: &Config, out: &Path) -> Option<Path
         "rustfmt",
     );
 
-    if should_fix_bins_and_dylibs(config.patch_binaries_for_nix, &config.exec_ctx) {
-        fix_bin_or_dylib(out, &bin_root.join("bin").join("rustfmt"), &config.exec_ctx);
-        fix_bin_or_dylib(out, &bin_root.join("bin").join("cargo-fmt"), &config.exec_ctx);
-        let lib_dir = bin_root.join("lib");
-        for lib in t!(fs::read_dir(&lib_dir), lib_dir.display().to_string()) {
-            let lib = t!(lib);
-            if path_is_dylib(&lib.path()) {
-                fix_bin_or_dylib(out, &lib.path(), &config.exec_ctx);
-            }
-        }
+    if config.should_patchelf() {
+        config.patchelfs(&bin_root.join("bin"), &["rustfmt", "cargo-fmt"]);
+        config.patchelf_all_so(&bin_root.join("lib"));
     }
 
     t!(rustfmt_stamp.write());
@@ -656,21 +606,11 @@ fn download_toolchain<'a>(
             );
         }
 
-        if should_fix_bins_and_dylibs(dwn_ctx.patch_binaries_for_nix, dwn_ctx.exec_ctx) {
-            fix_bin_or_dylib(out, &bin_root.join("bin").join("rustc"), dwn_ctx.exec_ctx);
-            fix_bin_or_dylib(out, &bin_root.join("bin").join("rustdoc"), dwn_ctx.exec_ctx);
-            fix_bin_or_dylib(
-                out,
-                &bin_root.join("libexec").join("rust-analyzer-proc-macro-srv"),
-                dwn_ctx.exec_ctx,
-            );
-            let lib_dir = bin_root.join("lib");
-            for lib in t!(fs::read_dir(&lib_dir), lib_dir.display().to_string()) {
-                let lib = t!(lib);
-                if path_is_dylib(&lib.path()) {
-                    fix_bin_or_dylib(out, &lib.path(), dwn_ctx.exec_ctx);
-                }
-            }
+        let ctx = (dwn_ctx, out);
+        if ctx.should_patchelf() {
+            ctx.patchelfs(&bin_root.join("bin"), &["rustc", "rustdoc"]);
+            ctx.patchelfs(&bin_root.join("libexec"), &["rust-analyzer-proc-macro-srv"]);
+            ctx.patchelf_all_so(&bin_root.join("lib"));
         }
 
         t!(rustc_stamp.write());
@@ -684,6 +624,130 @@ pub(crate) fn remove(exec_ctx: &ExecutionContext, f: &Path) {
     fs::remove_file(f).unwrap_or_else(|_| panic!("failed to remove {f:?}"));
 }
 
+// `fix_bin_or_dylib` from bootstrap.py
+trait PatchelfContext {
+    fn should_patch_binaries_for_nix(&self) -> Option<bool>;
+    fn get_exec_ctx(&self) -> &ExecutionContext;
+    fn get_out_dir(&self) -> &Path;
+
+    #[must_use]
+    // FIXME(https://github.com/rust-lang/rust/issues/131179): #[final]
+    fn should_patchelf(&self) -> bool {
+        *SHOULD_FIX_BINS_AND_DYLIBS.get_or_init(|| {
+            let uname =
+                command("uname").allow_failure().arg("-s").run_capture_stdout(self.get_exec_ctx());
+            if uname.is_failure() {
+                return false;
+            }
+            let output = uname.stdout();
+            if !output.starts_with("Linux") {
+                return false;
+            }
+            // If the user has asked binaries to be patched for Nix, then
+            // don't check for NixOS or `/lib`.
+            // NOTE: this intentionally comes after the Linux check:
+            // - patchelf only works with ELF files, so no need to run it on Mac or Windows
+            // - On other Unix systems, there is no stable syscall interface, so Nix doesn't manage the global libc.
+            if let Some(explicit_value) = self.should_patch_binaries_for_nix() {
+                return explicit_value;
+            }
+
+            // Use `/etc/os-release` instead of `/etc/NIXOS`.
+            // The latter one does not exist on NixOS when using tmpfs as root.
+            let is_nixos = match File::open("/etc/os-release") {
+                Err(e) if e.kind() == ErrorKind::NotFound => false,
+                Err(e) => panic!("failed to access /etc/os-release: {e}"),
+                Ok(os_release) => BufReader::new(os_release).lines().any(|l| {
+                    let l = l.expect("reading /etc/os-release");
+                    matches!(l.trim(), "ID=nixos" | "ID='nixos'" | "ID=\"nixos\"")
+                }),
+            };
+            if is_nixos {
+                eprintln!("INFO: You seem to be using Nix.");
+            } else {
+                if let Ok(in_nix_shell) = env::var("IN_NIX_SHELL") {
+                    eprintln!(
+                        "The IN_NIX_SHELL environment variable is `{in_nix_shell}`; \
+                     you may need to set `patch-binaries-for-nix=true` in bootstrap.toml"
+                    );
+                }
+            }
+            is_nixos
+        })
+    }
+
+    // FIXME(https://github.com/rust-lang/rust/issues/131179): #[final]
+    fn patchelfs(&self, dir: &Path, entries: &[&str]) {
+        if !self.should_patchelf() {
+            return;
+        }
+        for entry in entries {
+            fix_bin_or_dylib(self.get_out_dir(), &dir.join(entry), self.get_exec_ctx());
+        }
+    }
+
+    // FIXME(https://github.com/rust-lang/rust/issues/131179): #[final]
+    /// Patches files in `dir` (only one level deep) that look like dylibs.
+    fn patchelf_all_so(&self, dir: &Path) {
+        self.patchelf_some(dir, path_is_dylib)
+    }
+
+    // FIXME(https://github.com/rust-lang/rust/issues/131179): #[final]
+    /// Patches files in `dir` (only one level deep).
+    fn patchelf_all(&self, dir: &Path) {
+        self.patchelf_some(dir, |_| true)
+    }
+
+    // FIXME(https://github.com/rust-lang/rust/issues/131179): #[final]
+    /// Patches files in `dir` (only one level deep) if they satisfy a given predicate.
+    fn patchelf_some(&self, dir: &Path, filter: impl Fn(&Path) -> bool) {
+        if !self.should_patchelf() {
+            return;
+        }
+        for entry in t!(fs::read_dir(dir), dir.display().to_string()) {
+            let path = t!(entry).path();
+            if filter(&path) {
+                fix_bin_or_dylib(self.get_out_dir(), &path, self.get_exec_ctx());
+            }
+        }
+    }
+}
+
+impl PatchelfContext for (&DownloadContext<'_>, &Path) {
+    fn should_patch_binaries_for_nix(&self) -> Option<bool> {
+        self.0.patch_binaries_for_nix
+    }
+
+    fn get_exec_ctx(&self) -> &ExecutionContext {
+        self.0.exec_ctx
+    }
+
+    fn get_out_dir(&self) -> &Path {
+        self.1
+    }
+}
+
+impl PatchelfContext for Config {
+    fn should_patch_binaries_for_nix(&self) -> Option<bool> {
+        self.patch_binaries_for_nix
+    }
+
+    fn get_exec_ctx(&self) -> &ExecutionContext {
+        &self.exec_ctx
+    }
+
+    fn get_out_dir(&self) -> &Path {
+        &self.out
+    }
+}
+
+/// Modifies the interpreter section of 'fname' to fix the dynamic linker,
+/// or the RPATH section, to fix the dynamic library search path
+///
+/// This is only required on NixOS and uses the PatchELF utility to
+/// change the interpreter/RPATH of ELF executables.
+///
+/// Please see <https://nixos.org/patchelf.html> for more information
 fn fix_bin_or_dylib(out: &Path, fname: &Path, exec_ctx: &ExecutionContext) {
     assert_eq!(SHOULD_FIX_BINS_AND_DYLIBS.get(), Some(&true));
     println!("attempting to patch {}", fname.display());
@@ -744,55 +808,6 @@ fn fix_bin_or_dylib(out: &Path, fname: &Path, exec_ctx: &ExecutionContext) {
     }
     patchelf.arg(fname);
     let _ = patchelf.allow_failure().run_capture_stdout(exec_ctx);
-}
-
-fn should_fix_bins_and_dylibs(
-    patch_binaries_for_nix: Option<bool>,
-    exec_ctx: &ExecutionContext,
-) -> bool {
-    let val = *SHOULD_FIX_BINS_AND_DYLIBS.get_or_init(|| {
-        let uname = command("uname").allow_failure().arg("-s").run_capture_stdout(exec_ctx);
-        if uname.is_failure() {
-            return false;
-        }
-        let output = uname.stdout();
-        if !output.starts_with("Linux") {
-            return false;
-        }
-        // If the user has asked binaries to be patched for Nix, then
-        // don't check for NixOS or `/lib`.
-        // NOTE: this intentionally comes after the Linux check:
-        // - patchelf only works with ELF files, so no need to run it on Mac or Windows
-        // - On other Unix systems, there is no stable syscall interface, so Nix doesn't manage the global libc.
-        if let Some(explicit_value) = patch_binaries_for_nix {
-            return explicit_value;
-        }
-
-        // Use `/etc/os-release` instead of `/etc/NIXOS`.
-        // The latter one does not exist on NixOS when using tmpfs as root.
-        let is_nixos = match File::open("/etc/os-release") {
-            Err(e) if e.kind() == ErrorKind::NotFound => false,
-            Err(e) => panic!("failed to access /etc/os-release: {e}"),
-            Ok(os_release) => BufReader::new(os_release).lines().any(|l| {
-                let l = l.expect("reading /etc/os-release");
-                matches!(l.trim(), "ID=nixos" | "ID='nixos'" | "ID=\"nixos\"")
-            }),
-        };
-        if !is_nixos {
-            let in_nix_shell = env::var("IN_NIX_SHELL");
-            if let Ok(in_nix_shell) = in_nix_shell {
-                eprintln!(
-                    "The IN_NIX_SHELL environment variable is `{in_nix_shell}`; \
-                     you may need to set `patch-binaries-for-nix=true` in bootstrap.toml"
-                );
-            }
-        }
-        is_nixos
-    });
-    if val {
-        eprintln!("INFO: You seem to be using Nix.");
-    }
-    val
 }
 
 fn download_component<'a>(
