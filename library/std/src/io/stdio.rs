@@ -8,8 +8,8 @@ use crate::fmt;
 use crate::fs::File;
 use crate::io::prelude::*;
 use crate::io::{
-    self, BorrowedCursor, BufReader, Empty, IoSlice, IoSliceMut, LineWriter, Lines, Repeat, Sink,
-    SpecReadByte, Take,
+    self, BorrowedCursor, BufReader, BufWriter, Empty, IoSlice, IoSliceMut, LineWriter, Lines,
+    Repeat, Sink, SpecReadByte, Take,
 };
 use crate::panic::{RefUnwindSafe, UnwindSafe};
 use crate::sync::atomic::{Atomic, AtomicBool, Ordering};
@@ -1277,6 +1277,22 @@ impl_is_terminal!(false: Empty, Repeat, Sink);
 
 #[stable(feature = "more_is_terminal", since = "CURRENT_RUSTC_VERSION")]
 impl<T: IsTerminal> IsTerminal for Take<T> {
+    fn is_terminal(&self) -> bool {
+        self.inner.is_terminal()
+    }
+}
+
+// NOTE: unlike with `BufWriter` and `T: Write`, `BufReader` does not actually require `T: Read`,
+// but it removing this bound from this impl will be simpler than adding it, so let it be.
+#[stable(feature = "buf_is_terminal", since = "CURRENT_RUSTC_VERSION")]
+impl<T: IsTerminal + ?Sized + Read> IsTerminal for BufReader<T> {
+    fn is_terminal(&self) -> bool {
+        self.inner.is_terminal()
+    }
+}
+
+#[stable(feature = "buf_is_terminal", since = "CURRENT_RUSTC_VERSION")]
+impl<T: IsTerminal + ?Sized + Write> IsTerminal for BufWriter<T> {
     fn is_terminal(&self) -> bool {
         self.inner.is_terminal()
     }
