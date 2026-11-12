@@ -921,10 +921,7 @@ impl Ipv4Addr {
             || self.is_link_local()
             // addresses reserved for future protocols (`192.0.0.0/24`)
             // .9 and .10 are documented as globally reachable so they're excluded
-            || (
-                self.octets()[0] == 192 && self.octets()[1] == 0 && self.octets()[2] == 0
-                && self.octets()[3] != 9 && self.octets()[3] != 10
-            )
+            || matches!(self.octets(), [192, 0, 0, d] if d != 9 && d!=10)
             // 6a44-relay anycast address (`192.88.99.2/32`)
             || matches!(self.octets(), [192, 88, 99, 2])
             || self.is_documentation()
@@ -952,7 +949,7 @@ impl Ipv4Addr {
     #[must_use]
     #[inline]
     pub const fn is_shared(&self) -> bool {
-        self.octets()[0] == 100 && (self.octets()[1] & 0b1100_0000 == 0b0100_0000)
+        matches!(self.octets(), [100, b, ..] if b & 0b1100_0000 == 0b0100_0000)
     }
 
     /// Returns [`true`] if this address part of the `198.18.0.0/15` range, which is reserved for
@@ -979,7 +976,7 @@ impl Ipv4Addr {
     #[must_use]
     #[inline]
     pub const fn is_benchmarking(&self) -> bool {
-        self.octets()[0] == 198 && (self.octets()[1] & 0xfe) == 18
+        matches!(self.octets(), [198, b, ..] if b & 0xfe == 18)
     }
 
     /// Returns [`true`] if this address is reserved by IANA for future use.
@@ -1867,7 +1864,7 @@ impl Ipv6Addr {
     #[must_use]
     #[inline]
     pub const fn is_benchmarking(&self) -> bool {
-        (self.segments()[0] == 0x2001) && (self.segments()[1] == 0x2) && (self.segments()[2] == 0)
+        matches!(self.segments(), [0x2001, 0x2, 0, ..])
     }
 
     /// Returns [`true`] if the address is a globally routable unicast address.
