@@ -250,7 +250,7 @@ use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 #[cfg(not(no_global_oom_handling))]
 use core::iter;
-use core::marker::{PhantomData, Unsize};
+use core::marker::{PhantomData, PhantomInvariant, Unsize};
 use core::mem::{self, Alignment, ManuallyDrop};
 use core::num::NonZeroUsize;
 use core::ops::{CoerceUnsized, Deref, DerefMut, DerefPure, DispatchFromDyn, LegacyReceiver};
@@ -4103,7 +4103,7 @@ pub struct UniqueRc<
     _marker: PhantomData<RcInner<T>>,
     // Invariance is necessary for soundness: once other `Weak`
     // references exist, we already have a form of shared mutability!
-    _marker2: PhantomData<*mut T>,
+    _marker2: PhantomInvariant<T>,
     alloc: A,
 }
 
@@ -4407,7 +4407,7 @@ impl<T, A: Allocator> UniqueRc<T, A> {
             },
             alloc,
         ));
-        Self { ptr, _marker: PhantomData, _marker2: PhantomData, alloc }
+        Self { ptr, _marker: PhantomData, _marker2: variance(), alloc }
     }
 
     /// Like [`new_in`](Self::new_in), but returns an error if the allocation
@@ -4425,7 +4425,7 @@ impl<T, A: Allocator> UniqueRc<T, A> {
             },
             alloc,
         )?);
-        Ok(Self { ptr, _marker: PhantomData, _marker2: PhantomData, alloc })
+        Ok(Self { ptr, _marker: PhantomData, _marker2: variance(), alloc })
     }
 
     /// Consumes the `UniqueRc`, returning its wrapped value and allocator.
@@ -4562,7 +4562,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
             // SAFETY: Upheld by caller.
             ptr: unsafe { NonNull::new_unchecked(rc_ptr) },
             _marker: PhantomData,
-            _marker2: PhantomData,
+            _marker2: variance(),
             alloc,
         }
     }
@@ -4626,7 +4626,7 @@ impl<T: ?Sized, A: Allocator> UniqueRc<T, A> {
 
     #[inline]
     unsafe fn from_inner_in(ptr: NonNull<RcInner<T>>, alloc: A) -> Self {
-        Self { ptr, _marker: PhantomData, _marker2: PhantomData, alloc }
+        Self { ptr, _marker: PhantomData, _marker2: variance(), alloc }
     }
 }
 
