@@ -3,7 +3,7 @@ use super::builder::Builder;
 use super::current::current_or_unnamed;
 use super::lifecycle::{JoinInner, spawn_unchecked};
 use super::thread::Thread;
-use crate::marker::PhantomData;
+use crate::marker::{PhantomInvariantLifetime, variance};
 use crate::panic::{AssertUnwindSafe, catch_unwind, resume_unwind};
 use crate::sync::Arc;
 use crate::sync::atomic::{Atomic, AtomicBool, AtomicUsize, Ordering};
@@ -13,7 +13,10 @@ use crate::{fmt, io};
 ///
 /// See [`scope`] for details.
 #[stable(feature = "scoped_threads", since = "1.63.0")]
-pub struct Scope<'scope, 'env: 'scope> {
+pub struct Scope<
+    #[rustc_assert_variance(invariant)] 'scope,
+    #[rustc_assert_variance(invariant)] 'env: 'scope,
+> {
     data: Arc<ScopeData>,
     /// Invariance over 'scope, to make sure 'scope cannot shrink,
     /// which is necessary for soundness.
@@ -28,8 +31,10 @@ pub struct Scope<'scope, 'env: 'scope> {
     ///     });
     /// });
     /// ```
-    scope: PhantomData<&'scope mut &'scope ()>,
-    env: PhantomData<&'env mut &'env ()>,
+    #[expect(dead_code)]
+    scope: PhantomInvariantLifetime<'scope>,
+    #[expect(dead_code)]
+    env: PhantomInvariantLifetime<'env>,
 }
 
 /// An owned permission to join on a scoped thread (block on its termination).
@@ -150,8 +155,8 @@ where
             main_thread: current_or_unnamed(),
             a_thread_panicked: AtomicBool::new(false),
         }),
-        env: PhantomData,
-        scope: PhantomData,
+        env: variance(),
+        scope: variance(),
     };
 
     // Run `f`, but catch panics so we can make sure to wait for all the threads to join.

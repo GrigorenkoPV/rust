@@ -1,6 +1,6 @@
 use crate::cell::UnsafeCell;
 use crate::fmt;
-use crate::marker::PhantomData;
+use crate::marker::{PhantomInvariant, variance};
 use crate::mem::{self, ManuallyDrop, forget};
 use crate::ops::{Deref, DerefMut};
 use crate::ptr::NonNull;
@@ -233,9 +233,9 @@ pub struct MappedRwLockWriteGuard<
     /// holds uniquneness until it drops, not for its whole scope.
     /// `NonNull` is preferable over `*const T` to allow for niche optimizations.
     data: NonNull<T>,
-    /// `NonNull` is covariant over `T`, so we add a `PhantomData<&'rwlock mut T>` field here to
+    /// `NonNull` is covariant over `T`, so we add this field here to
     /// enforce the correct invariance over `T`.
-    _variance: PhantomData<&'rwlock mut T>,
+    _variance: PhantomInvariant<T>,
     /// A reference to the internal [`sys::RwLock`] that we have write-locked.
     inner_lock: &'rwlock sys::RwLock,
     /// A reference to the original `RwLock`'s poison state.
@@ -936,7 +936,7 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
             inner_lock: &orig.lock.inner,
             poison_flag: &orig.lock.poison,
             poison_guard: orig.poison.clone(),
-            _variance: PhantomData,
+            _variance: variance(),
         }
     }
 
@@ -973,7 +973,7 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
                     inner_lock: &orig.lock.inner,
                     poison_flag: &orig.lock.poison,
                     poison_guard: orig.poison.clone(),
-                    _variance: PhantomData,
+                    _variance: variance(),
                 })
             }
             None => Err(orig),
@@ -1078,7 +1078,7 @@ impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
             inner_lock: orig.inner_lock,
             poison_flag: orig.poison_flag,
             poison_guard: orig.poison_guard.clone(),
-            _variance: PhantomData,
+            _variance: variance(),
         }
     }
 
@@ -1118,7 +1118,7 @@ impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
                     inner_lock: orig.inner_lock,
                     poison_flag: orig.poison_flag,
                     poison_guard: orig.poison_guard.clone(),
-                    _variance: PhantomData,
+                    _variance: variance(),
                 })
             }
             None => Err(orig),

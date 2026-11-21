@@ -519,9 +519,9 @@ impl ExitCodeExt for process::ExitCode {
 /// [1]: <https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-initializeprocthreadattributelist>
 #[derive(Debug)]
 #[unstable(feature = "windows_process_extensions_raw_attribute", issue = "114854")]
-pub struct ProcThreadAttributeList<'a> {
+pub struct ProcThreadAttributeList<#[rustc_assert_variance(covariant)] 'a> {
     attribute_list: Box<[MaybeUninit<u8>]>,
-    _lifetime_marker: marker::PhantomData<&'a ()>,
+    _lifetime_marker: marker::PhantomCovariantLifetime<'a>,
 }
 
 #[unstable(feature = "windows_process_extensions_raw_attribute", issue = "114854")]
@@ -557,9 +557,9 @@ impl<'a> Drop for ProcThreadAttributeList<'a> {
 /// Builder for constructing a [`ProcThreadAttributeList`].
 #[derive(Clone, Debug)]
 #[unstable(feature = "windows_process_extensions_raw_attribute", issue = "114854")]
-pub struct ProcThreadAttributeListBuilder<'a> {
+pub struct ProcThreadAttributeListBuilder<#[rustc_assert_variance(covariant)] 'a> {
     attributes: alloc::collections::BTreeMap<usize, ProcThreadAttributeValue>,
-    _lifetime_marker: marker::PhantomData<&'a ()>,
+    _lifetime_marker: marker::PhantomCovariantLifetime<'a>,
 }
 
 #[unstable(feature = "windows_process_extensions_raw_attribute", issue = "114854")]
@@ -567,7 +567,7 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
     fn new() -> Self {
         ProcThreadAttributeListBuilder {
             attributes: alloc::collections::BTreeMap::new(),
-            _lifetime_marker: marker::PhantomData,
+            _lifetime_marker: marker::variance(),
         }
     }
 
@@ -746,7 +746,7 @@ impl<'a> ProcThreadAttributeListBuilder<'a> {
             })?;
         }
 
-        Ok(ProcThreadAttributeList { attribute_list, _lifetime_marker: marker::PhantomData })
+        Ok(ProcThreadAttributeList { attribute_list, _lifetime_marker: marker::variance() })
     }
 }
 

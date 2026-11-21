@@ -1,6 +1,6 @@
 use crate::cell::UnsafeCell;
 use crate::fmt;
-use crate::marker::PhantomData;
+use crate::marker::{PhantomInvariant, variance};
 use crate::mem::{self, ManuallyDrop, forget};
 use crate::ops::{Deref, DerefMut};
 use crate::ptr::NonNull;
@@ -182,9 +182,9 @@ pub struct MappedRwLockWriteGuard<
     /// holds uniquneness until it drops, not for its whole scope.
     /// `NonNull` is preferable over `*const T` to allow for niche optimizations.
     data: NonNull<T>,
-    /// `NonNull` is covariant over `T`, so we add a `PhantomData<&'rwlock mut T>` field here to
+    /// `NonNull` is covariant over `T`, so we this field here to
     /// enforce the correct invariance over `T`.
-    _variance: PhantomData<&'rwlock mut T>,
+    _variance: PhantomInvariant<T>,
     /// A reference to the internal [`sys::RwLock`] that we have write-locked.
     inner_lock: &'rwlock sys::RwLock,
 }
@@ -803,7 +803,7 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
         // reference passed to it. If the closure panics, the guard will be dropped.
         let data = NonNull::from(f(unsafe { &mut *orig.lock.data.get() }));
         let orig = ManuallyDrop::new(orig);
-        MappedRwLockWriteGuard { data, inner_lock: &orig.lock.inner, _variance: PhantomData }
+        MappedRwLockWriteGuard { data, inner_lock: &orig.lock.inner, _variance: variance() }
     }
 
     /// Makes a [`MappedRwLockWriteGuard`] for a component of the borrowed data. The
@@ -838,7 +838,7 @@ impl<'rwlock, T: ?Sized> RwLockWriteGuard<'rwlock, T> {
                 Ok(MappedRwLockWriteGuard {
                     data,
                     inner_lock: &orig.lock.inner,
-                    _variance: PhantomData,
+                    _variance: variance(),
                 })
             }
             None => Err(orig),
@@ -939,7 +939,7 @@ impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
         // reference passed to it. If the closure panics, the guard will be dropped.
         let data = NonNull::from(f(unsafe { orig.data.as_mut() }));
         let orig = ManuallyDrop::new(orig);
-        MappedRwLockWriteGuard { data, inner_lock: orig.inner_lock, _variance: PhantomData }
+        MappedRwLockWriteGuard { data, inner_lock: orig.inner_lock, _variance: variance() }
     }
 
     /// Makes a [`MappedRwLockWriteGuard`] for a component of the borrowed data.
@@ -977,7 +977,7 @@ impl<'rwlock, T: ?Sized> MappedRwLockWriteGuard<'rwlock, T> {
                 Ok(MappedRwLockWriteGuard {
                     data,
                     inner_lock: orig.inner_lock,
-                    _variance: PhantomData,
+                    _variance: variance(),
                 })
             }
             None => Err(orig),

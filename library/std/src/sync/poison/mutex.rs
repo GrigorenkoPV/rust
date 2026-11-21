@@ -1,6 +1,6 @@
 use crate::cell::UnsafeCell;
 use crate::fmt;
-use crate::marker::PhantomData;
+use crate::marker::{PhantomInvariant, variance};
 use crate::mem::{self, ManuallyDrop};
 use crate::ops::{Deref, DerefMut};
 use crate::ptr::NonNull;
@@ -332,7 +332,7 @@ pub struct MappedMutexGuard<
     inner: &'a sys::Mutex,
     poison_flag: &'a poison::Flag,
     poison: poison::Guard,
-    _variance: PhantomData<&'a mut T>,
+    _variance: PhantomInvariant<T>,
 }
 
 #[unstable(feature = "mapped_lock_guards", issue = "117108")]
@@ -804,7 +804,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
             inner: &orig.lock.inner,
             poison_flag: &orig.lock.poison,
             poison: orig.poison.clone(),
-            _variance: PhantomData,
+            _variance: variance(),
         }
     }
 
@@ -836,7 +836,7 @@ impl<'a, T: ?Sized> MutexGuard<'a, T> {
                     inner: &orig.lock.inner,
                     poison_flag: &orig.lock.poison,
                     poison: orig.poison.clone(),
-                    _variance: PhantomData,
+                    _variance: variance(),
                 })
             }
             None => Err(orig),
@@ -911,7 +911,7 @@ impl<'a, T: ?Sized> MappedMutexGuard<'a, T> {
             inner: orig.inner,
             poison_flag: orig.poison_flag,
             poison: orig.poison.clone(),
-            _variance: PhantomData,
+            _variance: variance(),
         }
     }
 
@@ -943,7 +943,7 @@ impl<'a, T: ?Sized> MappedMutexGuard<'a, T> {
                     inner: orig.inner,
                     poison_flag: orig.poison_flag,
                     poison: orig.poison.clone(),
-                    _variance: PhantomData,
+                    _variance: variance(),
                 })
             }
             None => Err(orig),

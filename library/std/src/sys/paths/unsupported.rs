@@ -1,5 +1,5 @@
 use crate::ffi::{OsStr, OsString};
-use crate::marker::PhantomData;
+use crate::marker::PhantomCovariantLifetime;
 use crate::path::{self, Path, PathBuf};
 use crate::sys::pal::unsupported;
 use crate::{fmt, io};
@@ -12,8 +12,8 @@ pub fn chdir(_: &path::Path) -> io::Result<()> {
     unsupported()
 }
 
-pub struct SplitPaths<'a>(!, PhantomData<&'a ()>);
-pub struct SplitPathsRef<'a>(!, PhantomData<&'a ()>);
+pub struct SplitPaths<#[rustc_assert_variance(covariant)] 'a>(!, PhantomCovariantLifetime<'a>);
+pub struct SplitPathsRef<#[rustc_assert_variance(covariant)] 'a>(!, PhantomCovariantLifetime<'a>);
 
 pub fn split_paths(_unparsed: &OsStr) -> SplitPaths<'_> {
     panic!("unsupported")

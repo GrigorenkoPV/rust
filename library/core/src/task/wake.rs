@@ -1,7 +1,7 @@
 #![stable(feature = "futures_api", since = "1.36.0")]
 
 use crate::any::Any;
-use crate::marker::PhantomData;
+use crate::marker::{PhantomInvariantLifetime, variance};
 use crate::mem::{ManuallyDrop, transmute};
 use crate::panic::AssertUnwindSafe;
 use crate::{fmt, ptr};
@@ -219,19 +219,21 @@ enum ExtData<'a> {
 /// which can be used to wake the current task.
 #[stable(feature = "futures_api", since = "1.36.0")]
 #[lang = "Context"]
-pub struct Context<'a> {
+pub struct Context<#[rustc_assert_variance(invariant)] 'a> {
     waker: &'a Waker,
     local_waker: &'a LocalWaker,
     ext: AssertUnwindSafe<ExtData<'a>>,
-    // Ensure we future-proof against variance changes by forcing
-    // the lifetime to be invariant (argument-position lifetimes
-    // are contravariant while return-position lifetimes are
-    // covariant).
-    _marker: PhantomData<fn(&'a ()) -> &'a ()>,
-    // Ensure `Context` is `!Send` and `!Sync` in order to allow
-    // for future `!Send` and / or `!Sync` fields.
-    _marker2: PhantomData<*mut ()>,
+    // Ensure we future-proof against variance changes by forcing the lifetime to be invariant
+    _marker: PhantomInvariantLifetime<'a>,
 }
+
+// Ensure `Context` is `!Send` and `!Sync` in order to allow
+// for future `!Send` and / or `!Sync` fields.
+
+#[stable(feature = "futures_api", since = "1.36.0")]
+impl !Send for Context<'_> {}
+#[stable(feature = "futures_api", since = "1.36.0")]
+impl !Sync for Context<'_> {}
 
 impl<'a> Context<'a> {
     /// Creates a new `Context` from a [`&Waker`](Waker).
@@ -302,19 +304,20 @@ impl fmt::Debug for Context<'_> {
 /// ```
 #[unstable(feature = "local_waker", issue = "118959")]
 #[derive(Debug)]
-pub struct ContextBuilder<'a> {
+pub struct ContextBuilder<#[rustc_assert_variance(invariant)] 'a> {
     waker: &'a Waker,
     local_waker: &'a LocalWaker,
     ext: ExtData<'a>,
-    // Ensure we future-proof against variance changes by forcing
-    // the lifetime to be invariant (argument-position lifetimes
-    // are contravariant while return-position lifetimes are
-    // covariant).
-    _marker: PhantomData<fn(&'a ()) -> &'a ()>,
-    // Ensure `Context` is `!Send` and `!Sync` in order to allow
-    // for future `!Send` and / or `!Sync` fields.
-    _marker2: PhantomData<*mut ()>,
+    // Ensure we future-proof against variance changes by forcing the lifetime to be invariant
+    _marker: PhantomInvariantLifetime<'a>,
 }
+
+// Ensure `ContextBuilder` is `!Send` and `!Sync` in order to allow
+// for future `!Send` and / or `!Sync` fields.
+#[unstable(feature = "local_waker", issue = "118959")]
+impl !Send for ContextBuilder<'_> {}
+#[unstable(feature = "local_waker", issue = "118959")]
+impl !Sync for ContextBuilder<'_> {}
 
 impl<'a> ContextBuilder<'a> {
     /// Creates a ContextBuilder from a Waker.
@@ -323,13 +326,7 @@ impl<'a> ContextBuilder<'a> {
     pub const fn from_waker(waker: &'a Waker) -> Self {
         // SAFETY: LocalWaker is just Waker without thread safety
         let local_waker = unsafe { transmute(waker) };
-        Self {
-            waker,
-            local_waker,
-            ext: ExtData::None(()),
-            _marker: PhantomData,
-            _marker2: PhantomData,
-        }
+        Self { waker, local_waker, ext: ExtData::None(()), _marker: variance() }
     }
 
     /// Creates a ContextBuilder from an existing Context.
@@ -340,13 +337,7 @@ impl<'a> ContextBuilder<'a> {
             ExtData::Some(ext) => ExtData::Some(*ext),
             ExtData::None(()) => ExtData::None(()),
         };
-        Self {
-            waker: cx.waker,
-            local_waker: cx.local_waker,
-            ext,
-            _marker: PhantomData,
-            _marker2: PhantomData,
-        }
+        Self { waker: cx.waker, local_waker: cx.local_waker, ext, _marker: variance() }
     }
 
     /// Sets the value for the waker on `Context`.
@@ -374,8 +365,8 @@ impl<'a> ContextBuilder<'a> {
     #[inline]
     #[unstable(feature = "local_waker", issue = "118959")]
     pub const fn build(self) -> Context<'a> {
-        let ContextBuilder { waker, local_waker, ext, _marker, _marker2 } = self;
-        Context { waker, local_waker, ext: AssertUnwindSafe(ext), _marker, _marker2 }
+        let ContextBuilder { waker, local_waker, ext, _marker } = self;
+        Context { waker, local_waker, ext: AssertUnwindSafe(ext), _marker }
     }
 }
 

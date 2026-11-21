@@ -156,6 +156,7 @@
 #![feature(maybe_uninit_uninit_array_transpose)]
 #![feature(panic_internals)]
 #![feature(pattern)]
+#![feature(phantom_variance_markers)]
 #![feature(pin_coerce_unsized_trait)]
 #![feature(ptr_alignment_type)]
 #![feature(ptr_cast_array)]

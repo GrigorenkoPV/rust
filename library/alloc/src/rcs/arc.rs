@@ -4540,7 +4540,7 @@ impl<T: core::error::Error + ?Sized> core::error::Error for Arc<T> {
 /// including fallible or async constructors.
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
 pub struct UniqueArc<
-    T: ?Sized,
+    #[rustc_assert_variance(invariant)] T: ?Sized,
     #[unstable(feature = "allocator_ext", issue = "163177", implied_by = "allocator_api")] A: Allocator = Global,
 > {
     ptr: NonNull<ArcInner<T>>,

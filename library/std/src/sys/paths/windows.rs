@@ -3,7 +3,7 @@
 #![allow(nonstandard_style)]
 
 use crate::ffi::{OsStr, OsString};
-use crate::marker::PhantomData;
+use crate::marker::PhantomCovariantLifetime;
 use crate::os::windows::ffi::EncodeWide;
 use crate::os::windows::prelude::*;
 use crate::path::{self, PathBuf};
@@ -57,7 +57,7 @@ impl<'a> Iterator for SplitPaths<'a> {
     }
 }
 
-pub struct SplitPathsRef<'a>(!, PhantomData<&'a ()>);
+pub struct SplitPathsRef<#[rustc_assert_variance(covariant)] 'a>(!, PhantomCovariantLifetime<'a>);
 
 pub fn split_paths_ref(_unparsed: &OsStr) -> Option<SplitPathsRef<'_>> {
     None

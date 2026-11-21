@@ -2,17 +2,21 @@
 
 use crate::fmt;
 use crate::hash::{Hash, Hasher};
-use crate::marker::PhantomData;
+use crate::marker::{PhantomInvariant, variance};
 
 /// Field Representing Type
 #[unstable(feature = "field_representing_type_raw", issue = "none")]
 #[lang = "field_representing_type"]
 #[fundamental]
-pub struct FieldRepresentingType<T: ?Sized, const VARIANT: u32, const FIELD: u32> {
+pub struct FieldRepresentingType<
+    #[rustc_assert_variance(invariant)] T: ?Sized,
+    const VARIANT: u32,
+    const FIELD: u32,
+> {
     // We want this type to be invariant over `T`, because otherwise `field_of!(Struct<'short>,
     // field)` is a subtype of `field_of!(Struct<'long>, field)`. This subtype relationship does not
     // have an immediately obvious meaning and we want to prevent people from relying on it.
-    _phantom: PhantomData<fn(T) -> T>,
+    _phantom: PhantomInvariant<T>,
 }
 
 impl<T: ?Sized, const VARIANT: u32, const FIELD: u32> fmt::Debug
@@ -78,7 +82,7 @@ impl<T: ?Sized, const VARIANT: u32, const FIELD: u32> Default
     for FieldRepresentingType<T, VARIANT, FIELD>
 {
     fn default() -> Self {
-        Self { _phantom: PhantomData }
+        Self { _phantom: variance() }
     }
 }
 

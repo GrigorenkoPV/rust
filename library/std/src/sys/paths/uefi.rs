@@ -1,7 +1,7 @@
 use r_efi::efi::protocols::{device_path, loaded_image_device_path};
 
 use crate::ffi::{OsStr, OsString};
-use crate::marker::PhantomData;
+use crate::marker::PhantomCovariantLifetime;
 use crate::os::uefi::ffi::{OsStrExt, OsStringExt};
 use crate::path::{self, PathBuf};
 use crate::sys::pal::{helpers, unsupported_err};
@@ -72,7 +72,7 @@ impl<'a> Iterator for SplitPaths<'a> {
     }
 }
 
-pub struct SplitPathsRef<'a>(!, PhantomData<&'a ()>);
+pub struct SplitPathsRef<#[rustc_assert_variance(covariant)] 'a>(!, PhantomCovariantLifetime<'a>);
 
 pub fn split_paths_ref(_unparsed: &OsStr) -> Option<SplitPathsRef<'_>> {
     None

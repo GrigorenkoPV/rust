@@ -367,6 +367,7 @@
 #![feature(once_lazy_lock_get_unchecked)]
 #![feature(panic_can_unwind)]
 #![feature(panic_internals)]
+#![feature(phantom_variance_markers)]
 #![feature(pin_coerce_unsized_trait)]
 #![feature(pointer_is_aligned_to)]
 #![feature(portable_simd)]

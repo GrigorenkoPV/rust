@@ -4095,7 +4095,7 @@ fn data_offset_alignment(alignment: Alignment) -> usize {
 /// including fallible or async constructors.
 #[unstable(feature = "unique_rc_arc", issue = "112566")]
 pub struct UniqueRc<
-    T: ?Sized,
+    #[rustc_assert_variance(invariant)] T: ?Sized,
     #[unstable(feature = "allocator_ext", issue = "163177", implied_by = "allocator_api")] A: Allocator = Global,
 > {
     ptr: NonNull<RcInner<T>>,
